@@ -19,7 +19,11 @@ const SUPA_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 // Lightweight Supabase REST client (no npm needed for the artifact preview)
 const sb = {
   _headers(extra={}) {
-    return { "Content-Type":"application/json", "apikey": SUPA_ANON, "Authorization":`Bearer ${SUPA_ANON}`, ...extra };
+    // Use the logged-in user's access token when available, so RLS policies
+    // (auth.uid() = user_id) can correctly identify the requester.
+    // Fall back to the anon key only when no session exists.
+    const token = sb.auth._token || SUPA_ANON;
+    return { "Content-Type":"application/json", "apikey": SUPA_ANON, "Authorization":`Bearer ${token}`, ...extra };
   },
   async rpc(fn, body={}) {
     const r = await fetch(`${SUPA_URL}/rest/v1/rpc/${fn}`, { method:"POST", headers:this._headers(), body:JSON.stringify(body) });
@@ -62,6 +66,7 @@ const sb = {
       const d = await r.json();
       if (!r.ok) return { data:null, error:d };
       sb.auth._token = d.access_token; sb.auth._user = d.user;
+      try { sessionStorage.setItem("fl_token", d.access_token); sessionStorage.setItem("fl_user", JSON.stringify(d.user)); } catch{}
       return { data:{ user:d.user }, error:null };
     },
     async signInWithPassword({ email, password }) {
@@ -81,7 +86,7 @@ const sb = {
       try { sessionStorage.removeItem("fl_token"); sessionStorage.removeItem("fl_user"); } catch{}
     },
     async getUser() {
-      if (sb.auth._user) return { data:{ user:sb.auth._user } };
+      if (sb.auth._user && sb.auth._token) return { data:{ user:sb.auth._user } };
       try {
         const u = sessionStorage.getItem("fl_user");
         const t = sessionStorage.getItem("fl_token");
@@ -1403,4 +1408,4 @@ export default function App() {
       )}
     </>
   );
-                              }
+}
