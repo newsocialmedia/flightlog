@@ -12,14 +12,9 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 
-// ── Supabase client (inline for single-file demo; move to src/supabase.js) ───
-// In production replace these with import.meta.env.VITE_* values
-const SUPA_URL  = typeof import !== "undefined" && typeof import.meta !== "undefined"
-  ? (import.meta.env?.VITE_SUPABASE_URL  || "")
-  : "";
-const SUPA_ANON = typeof import !== "undefined" && typeof import.meta !== "undefined"
-  ? (import.meta.env?.VITE_SUPABASE_ANON_KEY || "")
-  : "";
+// ── Supabase client config ──────────────────────────────────────────────────
+const SUPA_URL  = import.meta.env.VITE_SUPABASE_URL  || "";
+const SUPA_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 
 // Lightweight Supabase REST client (no npm needed for the artifact preview)
 const sb = {
