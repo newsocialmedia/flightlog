@@ -395,27 +395,26 @@ async function extractPdfText(file) {
 }
 
 // ── AI ROSTER PARSER ──────────────────────────────────────────────────────────
+// Calls our Supabase Edge Function instead of Anthropic directly.
+// This keeps the API key server-side and avoids browser CORS restrictions.
 async function aiParseRoster(text) {
-  const res = await fetch("https://api.anthropic.com/v1/messages",{
-    method:"POST", headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({
-      model:"claude-sonnet-4-6", max_tokens:4000,
-      messages:[{role:"user",content:`You are an aviation roster parser. Extract ALL flight duties.
-Return ONLY valid JSON, no markdown, no preamble.
-
-Schema:
-{"periodLabel":"Jun 2026","year":2026,"monthNum":5,"calendar":[{"day":15,"dow":"Mon","isOff":false,"flights":[{"flightNum":"G7 4488","dep":"ORD","depTime":"12:45","arr":"MLI","arrTime":"13:56","acType":"CR7"}]}]}
-
-Rules: monthNum 0-indexed. Include ALL days even off days (isOff:true,flights:[]). Times HH:MM 24hr. Every single leg. dow=Sun Mon Tue Wed Thu Fri Sat. Sort by day.
-
-Roster:
-${text.slice(0,8000)}`}]
-    })
+  if (!SUPA_URL || !SUPA_ANON) {
+    throw new Error("Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
+  }
+  const res = await fetch(`${SUPA_URL}/functions/v1/parse-roster`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${SUPA_ANON}`,
+      "apikey": SUPA_ANON,
+    },
+    body: JSON.stringify({ text }),
   });
-  const d=await res.json();
-  const raw=d.content?.map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
-  const parsed=JSON.parse(raw);
-  return {...parsed, id:Date.now().toString(), uploadedAt:new Date().toISOString()};
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || `Parse failed (${res.status})`);
+  }
+  return data;
 }
 
 // ── AERODATA LOOKUP ───────────────────────────────────────────────────────────
