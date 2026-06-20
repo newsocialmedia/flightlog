@@ -319,12 +319,18 @@ input,textarea,select{font-family:${FB}}
 .cal-detail-close:hover{color:${C.ink}}
 .cal-detail-off{color:${C.muted};font-size:13px;font-style:italic}
 .cal-detail-flights{display:flex;flex-direction:column;gap:8px}
-.cal-detail-flight{display:grid;grid-template-columns:80px 100px 130px 60px 90px;gap:10px;align-items:center;background:${C.panel};padding:10px 14px;border-radius:8px;font-size:13px}
+.cal-detail-flight{display:grid;grid-template-columns:80px 100px 130px 60px 90px 28px;gap:10px;align-items:center;background:${C.panel};padding:10px 14px;border-radius:8px;font-size:13px}
 .cal-detail-flight-num{font-family:${FM};color:${C.red};font-size:12px}
 .cal-detail-flight-route{font-weight:600;color:${C.ink}}
 .cal-detail-flight-time{font-family:${FM};font-size:11px;color:${C.muted}}
 .cal-detail-flight-block{font-family:${FM};font-size:12px;font-weight:600}
 .cal-detail-flight-tail{font-family:${FM};font-size:11px;color:${C.teal};background:${C.teal}14;padding:2px 8px;border-radius:4px;text-align:center}
+.cal-detail-flight-del{background:none;border:none;color:${C.muted};font-size:13px;cursor:pointer;padding:4px;justify-self:end;transition:color .15s}
+.cal-detail-flight-del:hover{color:${C.red}}
+.cal-add-form{margin-top:14px;background:${C.panel};border:1px solid ${C.border};border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px}
+.cal-add-row{display:flex;gap:8px;flex-wrap:wrap}
+.cal-add-row .form-input{padding:8px 10px;font-size:13px}
+.cal-add-narrow{max-width:110px}
 
 /* LOGBOOK */
 .month-tabs{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
@@ -422,12 +428,13 @@ input,textarea,select{font-family:${FB}}
   .cal-cell{min-height:58px;padding:5px}
   .cal-cell-route{font-size:9px}
   .cal-cell-legs{display:none}
-  .cal-detail-flight{grid-template-columns:1fr 1fr;grid-template-areas:"num route" "time block" "tail tail";row-gap:4px}
+  .cal-detail-flight{grid-template-columns:1fr 1fr auto;grid-template-areas:"num route del" "time block block" "tail tail tail";row-gap:4px}
   .cal-detail-flight-num{grid-area:num}
   .cal-detail-flight-route{grid-area:route;text-align:right}
   .cal-detail-flight-time{grid-area:time}
   .cal-detail-flight-block{grid-area:block;text-align:right}
   .cal-detail-flight-tail{grid-area:tail}
+  .cal-detail-flight-del{grid-area:del}
 }
 `;
 
@@ -438,15 +445,23 @@ const flightMins = (dep,arr) => { const [dh,dm]=dep.split(":").map(Number),[ah,a
 // by the AI parser) since naive local-time subtraction is wrong whenever a flight
 // crosses timezones. Falls back to the naive calculation only if the roster didn't
 // state a per-leg figure, in which case the value may be off for cross-timezone legs.
-const schedMins = (f) => f.schedBlockMins!=null ? f.schedBlockMins : flightMins(f.depTime,f.arrTime);
+// Sanity-checked: a single leg longer than 8 hours from naive subtraction is almost
+// certainly a wraparound artifact (arrival clock time appearing "before" departure
+// due to timezone, not an genuinely 8+ hour regional hop) — treat as unknown
+// rather than display a misleading double-digit-hour figure.
+const schedMins = (f) => {
+  if (f.schedBlockMins!=null) return f.schedBlockMins;
+  const naive = flightMins(f.depTime,f.arrTime);
+  return naive <= 480 ? naive : null;
+};
 const schedMinsIsEstimate = (f) => f.schedBlockMins==null;
-const rosterMins = r => r?.calendar?.reduce((a,d)=>a+d.flights.reduce((b,f)=>b+schedMins(f),0),0)??0;
+const rosterMins = r => r?.calendar?.reduce((a,d)=>a+d.flights.reduce((b,f)=>b+(schedMins(f)??0),0),0)??0;
 
 // "Best available" duration for a flight: prefer the actual (synced, post-flight)
 // block time when we have it — it's the real figure. Fall back to scheduled time
 // for flights that haven't happened yet (or haven't synced), since that's the
 // best estimate available until the real data arrives.
-const bestMins = (f, tailEntry) => tailEntry?.actualBlockMins!=null ? tailEntry.actualBlockMins : schedMins(f);
+const bestMins = (f, tailEntry) => tailEntry?.actualBlockMins!=null ? tailEntry.actualBlockMins : (schedMins(f)??0);
 const bestMinsIsActual = (tailEntry) => tailEntry?.actualBlockMins!=null;
 
 // Total minutes across all rosters using best-available duration per flight
@@ -475,7 +490,9 @@ function csvExport(rosters, tails) {
     const k=`${r.id}-${di}-${fi}`;
     const t=tails[k]||{};
     const actualBlock = t.actualBlockMins!=null ? fmtMins(t.actualBlockMins) : "";
-    rows.push([d.day,d.dow,f.flightNum,f.dep,f.depTime,t.actualDep||"",f.arr,f.arrTime,t.actualArr||"",f.acType,t.tail||"",fmtMins(schedMins(f)),actualBlock,r.periodLabel]);
+    const schedMinsVal = schedMins(f);
+    const schedBlock = schedMinsVal!=null ? fmtMins(schedMinsVal) : "";
+    rows.push([d.day,d.dow,f.flightNum,f.dep,f.depTime,t.actualDep||"",f.arr,f.arrTime,t.actualArr||"",f.acType,t.tail||"",schedBlock,actualBlock,r.periodLabel]);
   })));
   return rows.map(r=>r.join(",")).join("\n");
 }
@@ -626,6 +643,21 @@ async function db_saveRoster(userId, roster) {
 async function db_deleteRoster(userId, rosterId) {
   if(isConfigured()) { await sb.from("rosters").delete("id=eq."+rosterId); return; }
   const list = (local.get("fl_rosters_"+userId)||[]).filter(r=>r.id!==rosterId);
+  local.set("fl_rosters_"+userId, list);
+}
+
+// Saves an updated calendar array back to an existing roster — used when a
+// pilot manually adds/edits a flight on a day (e.g. one the AI parser marked
+// as off, or a flight that needs correcting).
+async function db_updateRosterCalendar(userId, rosterId, calendar) {
+  if(isConfigured()) {
+    const {error} = await sb.from("rosters").update({calendar}, "id=eq."+rosterId);
+    if(error) throw new Error("Failed to save changes");
+    return;
+  }
+  const list = local.get("fl_rosters_"+userId)||[];
+  const r = list.find(r=>r.id===rosterId);
+  if(r) r.calendar = calendar;
   local.set("fl_rosters_"+userId, list);
 }
 
@@ -998,7 +1030,7 @@ function Dashboard({user,rosters,tails,setPage}) {
                 <div className="recent-flight" key={i}>
                   <div className="rf-num">{f.flightNum}</div>
                   <div className="rf-route">{f.dep} → {f.arr}</div>
-                  <div className="rf-time">{fmtMins(schedMins(f))}</div>
+                  <div className="rf-time">{schedMins(f)!=null?fmtMins(schedMins(f)):"—"}</div>
                   {t?.tail&&<div className="rf-tail">{t.tail}</div>}
                 </div>
               );
@@ -1103,9 +1135,12 @@ function UploadPage({user, onRosterSaved}) {
 // ─────────────────────────────────────────────────────────────────────────────
 // CALENDAR
 // ─────────────────────────────────────────────────────────────────────────────
-function CalendarPage({rosters, tails}) {
+function CalendarPage({user, rosters, tails, onRosterUpdated}) {
   const [selRoster,setSelRoster]=useState(0);
   const [selDay,setSelDay]=useState(null);
+  const [adding,setAdding]=useState(false);
+  const [form,setForm]=useState({flightNum:"",dep:"",arr:"",depTime:"",arrTime:"",acType:""});
+  const [saving,setSaving]=useState(false);
 
   const roster=rosters[selRoster];
 
@@ -1140,20 +1175,73 @@ function CalendarPage({rosters, tails}) {
 
   const selected = selDay!=null ? dayMap[selDay] : null;
 
+  function resetForm() {
+    setForm({flightNum:"",dep:"",arr:"",depTime:"",arrTime:"",acType:""});
+    setAdding(false);
+  }
+
+  async function saveNewFlight() {
+    const fn=form.flightNum.trim(), dep=form.dep.trim().toUpperCase(), arr=form.arr.trim().toUpperCase();
+    const depTime=form.depTime.trim(), arrTime=form.arrTime.trim();
+    if(!fn||!dep||!arr||!depTime||!arrTime) { alert("Flight #, dep, arr, and both times are required."); return; }
+    if(!/^\d{2}:\d{2}$/.test(depTime)||!/^\d{2}:\d{2}$/.test(arrTime)) { alert("Times must be in HH:MM format."); return; }
+
+    setSaving(true);
+    const newCalendar=[...roster.calendar];
+    const newFlight={flightNum:fn,dep,arr,depTime,arrTime,acType:form.acType.trim().toUpperCase()||"—",schedBlockMins:null};
+
+    if(selected){
+      // Day already exists in the calendar — append to it
+      const di=selected.di;
+      newCalendar[di]={...newCalendar[di],isOff:false,flights:[...newCalendar[di].flights,newFlight]};
+    } else {
+      // Day not present yet — shouldn't normally happen since every day 1..N
+      // is pre-populated by the parser, but handle defensively just in case.
+      const dow=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(year,monthNum,selDay).getDay()];
+      newCalendar.push({day:selDay,dow,isOff:false,flights:[newFlight]});
+      newCalendar.sort((a,b)=>a.day-b.day);
+    }
+
+    try {
+      await db_updateRosterCalendar(user.id, roster.id, newCalendar);
+      onRosterUpdated(roster.id, newCalendar);
+      resetForm();
+    } catch(e) {
+      alert(e.message||"Failed to save flight.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteFlight(fi) {
+    if(!selected) return;
+    if(!window.confirm("Remove this flight?")) return;
+    const di=selected.di;
+    const newCalendar=[...roster.calendar];
+    const remainingFlights=newCalendar[di].flights.filter((_,i)=>i!==fi);
+    newCalendar[di]={...newCalendar[di],flights:remainingFlights,isOff:remainingFlights.length===0};
+    try {
+      await db_updateRosterCalendar(user.id, roster.id, newCalendar);
+      onRosterUpdated(roster.id, newCalendar);
+    } catch(e) {
+      alert(e.message||"Failed to remove flight.");
+    }
+  }
+
   return (
     <div>
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20,flexWrap:"wrap"}}>
         <div className="section-title" style={{marginBottom:0}}>Calendar</div>
         <div style={{marginLeft:"auto",display:"flex",gap:8,flexWrap:"wrap"}}>
           {rosters.map((r,i)=>(
-            <button key={r.id} className={`month-tab ${selRoster===i?"active":""}`} onClick={()=>{setSelRoster(i);setSelDay(null);}}>
+            <button key={r.id} className={`month-tab ${selRoster===i?"active":""}`} onClick={()=>{setSelRoster(i);setSelDay(null);resetForm();}}>
               {r.periodLabel}
             </button>
           ))}
         </div>
       </div>
 
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:10}}>
         <div className="cal-month-title">{monthName} {year}</div>
         <div className="cal-legend">
           <span className="cal-legend-item"><span className="cal-dot flown"/>Flown</span>
@@ -1177,7 +1265,7 @@ function CalendarPage({rosters, tails}) {
             <div
               key={day}
               className={`cal-cell ${status} ${isToday?"today":""} ${isSelected?"selected":""}`}
-              onClick={()=>setSelDay(isSelected?null:day)}
+              onClick={()=>{setSelDay(isSelected?null:day);resetForm();}}
             >
               <div className="cal-cell-day">{day}</div>
               {flights.length>0 && (
@@ -1197,7 +1285,7 @@ function CalendarPage({rosters, tails}) {
         <div className="cal-detail">
           <div className="cal-detail-header">
             <div className="cal-detail-title">{selected.d.dow} {monthName} {selDay}</div>
-            <button className="cal-detail-close" onClick={()=>setSelDay(null)}>✕</button>
+            <button className="cal-detail-close" onClick={()=>{setSelDay(null);resetForm();}}>✕</button>
           </div>
           {selected.d.flights.length===0 ? (
             <div className="cal-detail-off">Off day — no scheduled flights.</div>
@@ -1213,11 +1301,33 @@ function CalendarPage({rosters, tails}) {
                     <div className="cal-detail-flight-num">{f.flightNum}</div>
                     <div className="cal-detail-flight-route">{f.dep} → {f.arr}</div>
                     <div className="cal-detail-flight-time">{isFlown?`${entry.actualDep}–${entry.actualArr}`:`${f.depTime}–${f.arrTime}`}</div>
-                    <div className="cal-detail-flight-block" style={{color:isFlown?C.teal:C.muted}}>{fmtMins(mins)}{isFlown?"":"*"}</div>
+                    <div className="cal-detail-flight-block" style={{color:isFlown?C.teal:C.muted}}>{mins!=null?fmtMins(mins):"—"}{isFlown||mins==null?"":"*"}</div>
                     {entry.tail && <div className="cal-detail-flight-tail">{entry.tail}</div>}
+                    <button className="cal-detail-flight-del" onClick={()=>deleteFlight(fi)} title="Remove flight">✕</button>
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {!adding ? (
+            <button className="btn-sm-ghost" style={{marginTop:14}} onClick={()=>setAdding(true)}>+ Add flight</button>
+          ) : (
+            <div className="cal-add-form">
+              <div className="cal-add-row">
+                <input className="form-input" placeholder="Flight # (e.g. G7 4488)" value={form.flightNum} onChange={e=>setForm(p=>({...p,flightNum:e.target.value}))}/>
+                <input className="form-input cal-add-narrow" placeholder="Dep" value={form.dep} onChange={e=>setForm(p=>({...p,dep:e.target.value}))} maxLength={4}/>
+                <input className="form-input cal-add-narrow" placeholder="Arr" value={form.arr} onChange={e=>setForm(p=>({...p,arr:e.target.value}))} maxLength={4}/>
+              </div>
+              <div className="cal-add-row">
+                <input className="form-input cal-add-narrow" placeholder="Dep HH:MM" value={form.depTime} onChange={e=>setForm(p=>({...p,depTime:e.target.value}))}/>
+                <input className="form-input cal-add-narrow" placeholder="Arr HH:MM" value={form.arrTime} onChange={e=>setForm(p=>({...p,arrTime:e.target.value}))}/>
+                <input className="form-input cal-add-narrow" placeholder="Type" value={form.acType} onChange={e=>setForm(p=>({...p,acType:e.target.value}))} maxLength={4}/>
+              </div>
+              <div style={{display:"flex",gap:8,marginTop:4}}>
+                <button className="btn-teal" style={{padding:"9px 18px",fontSize:13}} onClick={saveNewFlight} disabled={saving}>{saving?<span className="spinner">⟳</span>:"Save flight"}</button>
+                <button className="btn-sm-ghost" onClick={resetForm}>Cancel</button>
+              </div>
             </div>
           )}
         </div>
@@ -1347,7 +1457,7 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
         const someSaved=d.flights.some((_,fi)=>tails[tkey(di,fi)]?.tail);
         const dotCls=allSaved?"all":someSaved?"partial":"";
         const expanded=exp[di]??(isToday&&d.flights.length>0);
-        const ft=d.flights.reduce((a,f)=>a+schedMins(f),0);
+        const ft=d.flights.reduce((a,f)=>a+(schedMins(f)??0),0);
         return (
           <div key={di} className={`day-card ${isToday?"today-card":""} ${allSaved?"logged-card":""}`}>
             <div className="day-card-header" onClick={()=>d.flights.length>0&&setExp(p=>({...p,[di]:!expanded}))}>
@@ -1689,87 +1799,4 @@ export default function App() {
         const u=await db_getSession();
         if(u) {
           setUser(u);
-          const [rs,ts]=await Promise.all([db_loadRosters(u.id),db_loadTails(u.id)]);
-          setRosters(rs); setTails(ts);
-          setPage(u.role==="admin"?"admin-overview":"dashboard");
-          setScreen("app");
-        } else { setScreen("landing"); }
-      } catch { setScreen("landing"); }
-    })();
-  },[]);
-
-  async function handleAuth(u) {
-    setUser(u);
-    try {
-      const [rs,ts]=await Promise.all([db_loadRosters(u.id),db_loadTails(u.id)]);
-      setRosters(rs); setTails(ts);
-    } catch {}
-    setPage(u.role==="admin"?"admin-overview":"dashboard");
-    setScreen("app");
-  }
-
-  async function handleLogout() {
-    await db_signOut();
-    setUser(null); setRosters([]); setTails({});
-    setScreen("landing");
-  }
-
-  function handleRosterSaved(roster) {
-    setRosters(prev=>[roster,...prev.filter(r=>r.id!==roster.id)]);
-    setPage("logbook");
-  }
-
-  async function handleDeleteRoster(rosterId) {
-    await db_deleteRoster(user.id, rosterId);
-    setRosters(prev=>prev.filter(r=>r.id!==rosterId));
-  }
-
-  function handleTailSaved(tk, val) {
-    setTails(prev=>({...prev,[tk]:val}));
-  }
-
-  const pageTitle = {
-    dashboard:"Dashboard", calendar:"Calendar", upload:"Upload Roster", logbook:"Logbook", settings:"Settings",
-    "admin-overview":"Overview","admin-users":"User Management","admin-rosters":"All Rosters","admin-settings":"Settings"
-  }[page]||page;
-
-  return (
-    <>
-      <style>{STYLES}</style>
-      {screen==="loading"&&(
-        <div className="loading-screen">
-          <div className="loading-logo">Flight<span>Log</span></div>
-          <div className="loading-sub"><span className="spinner">⟳</span> Loading…</div>
-        </div>
-      )}
-      {screen==="landing"&&<LandingPage onLogin={()=>{setAuthMode("login");setScreen("auth");}} onSignup={()=>{setAuthMode("signup");setScreen("auth");}}/>}
-      {screen==="auth"&&<AuthPage onAuth={handleAuth} onBack={()=>setScreen("landing")} initialMode={authMode}/>}
-      {screen==="app"&&user&&(
-        <div className="app-shell">
-          <Sidebar user={user} page={page} setPage={setPage} onLogout={handleLogout}/>
-          <div className="app-content">
-            <div className="app-topbar">
-              <div className="app-page-title">{pageTitle}</div>
-              {user.role==="admin"&&<span className="admin-badge">ADMIN</span>}
-              <div style={{display:"flex",alignItems:"center",gap:10}}>
-                <span style={{fontSize:12,color:C.muted}}>{user.name}</span>
-                <div className="avatar" style={{width:30,height:30,fontSize:13}}>{initials(user.name)}</div>
-              </div>
-            </div>
-            <div className="app-body">
-              {page==="dashboard"&&<Dashboard user={user} rosters={rosters} tails={tails} setPage={setPage}/>}
-              {page==="calendar"&&<CalendarPage rosters={rosters} tails={tails}/>}
-              {page==="upload"&&<UploadPage user={user} onRosterSaved={handleRosterSaved}/>}
-              {page==="logbook"&&<LogbookPage user={user} rosters={rosters} tails={tails} onTailSaved={handleTailSaved} onDeleteRoster={handleDeleteRoster}/>}
-              {page==="settings"&&<SettingsPage user={user} rosters={rosters} tails={tails}/>}
-              {page==="admin-overview"&&<AdminOverview/>}
-              {page==="admin-users"&&<AdminUsers/>}
-              {page==="admin-rosters"&&<AdminRosters/>}
-              {page==="admin-settings"&&<AdminSettings/>}
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
+          const [rs,ts]=await Promise.all([db_loadRosters
