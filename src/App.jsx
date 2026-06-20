@@ -291,6 +291,41 @@ input,textarea,select{font-family:${FB}}
 .upload-zone p{font-size:13px;color:${C.muted}}
 .upload-icon{font-size:48px;margin-bottom:16px;display:block}
 
+/* CALENDAR */
+.cal-month-title{font-family:${FD};font-size:22px;font-weight:500;color:${C.ink};font-style:italic}
+.cal-legend{display:flex;gap:16px}
+.cal-legend-item{display:flex;align-items:center;gap:6px;font-size:12px;color:${C.silver}}
+.cal-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.cal-dot.flown{background:${C.teal}}
+.cal-dot.scheduled{background:${C.gold}}
+.cal-dot.off{background:${C.border};border:1px solid ${C.muted}}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.cal-weekday{font-size:11px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:${C.muted};text-align:center;padding-bottom:6px}
+.cal-cell{background:${C.surface};border:1px solid ${C.border};border-radius:8px;min-height:78px;padding:8px;cursor:pointer;transition:all .15s;display:flex;flex-direction:column;gap:2px}
+.cal-cell:hover{border-color:${C.ink}55}
+.cal-cell-blank{background:transparent;border:none;cursor:default}
+.cal-cell.today{border-color:${C.red};border-width:1.5px}
+.cal-cell.selected{box-shadow:0 0 0 2px ${C.ink}}
+.cal-cell.off{background:${C.panel}}
+.cal-cell.scheduled{border-left:3px solid ${C.gold}}
+.cal-cell.flown{border-left:3px solid ${C.teal}}
+.cal-cell-day{font-family:${FM};font-size:12px;color:${C.ink};font-weight:500}
+.cal-cell-route{font-size:11px;color:${C.silver};margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cal-cell-legs{font-size:10px;color:${C.muted};margin-top:auto}
+.cal-detail{margin-top:20px;background:${C.surface};border:1px solid ${C.border};border-radius:12px;padding:20px}
+.cal-detail-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.cal-detail-title{font-family:${FD};font-size:17px;font-weight:500;color:${C.ink};font-style:italic}
+.cal-detail-close{background:none;border:none;color:${C.muted};font-size:16px;cursor:pointer;padding:4px}
+.cal-detail-close:hover{color:${C.ink}}
+.cal-detail-off{color:${C.muted};font-size:13px;font-style:italic}
+.cal-detail-flights{display:flex;flex-direction:column;gap:8px}
+.cal-detail-flight{display:grid;grid-template-columns:80px 100px 130px 60px 90px;gap:10px;align-items:center;background:${C.panel};padding:10px 14px;border-radius:8px;font-size:13px}
+.cal-detail-flight-num{font-family:${FM};color:${C.red};font-size:12px}
+.cal-detail-flight-route{font-weight:600;color:${C.ink}}
+.cal-detail-flight-time{font-family:${FM};font-size:11px;color:${C.muted}}
+.cal-detail-flight-block{font-family:${FM};font-size:12px;font-weight:600}
+.cal-detail-flight-tail{font-family:${FM};font-size:11px;color:${C.teal};background:${C.teal}14;padding:2px 8px;border-radius:4px;text-align:center}
+
 /* LOGBOOK */
 .month-tabs{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
 .month-tab{background:${C.panel};border:1px solid ${C.border};color:${C.silver};padding:6px 16px;border-radius:100px;font-size:12px;font-weight:500;transition:all .15s}
@@ -384,6 +419,15 @@ input,textarea,select{font-family:${FB}}
   .col-heads-2row,.flight-row-top{grid-template-columns:64px 38px 38px 1fr 50px 40px}
   .lp-nav{padding:0 16px}
   .lp-section{padding:60px 16px}
+  .cal-cell{min-height:58px;padding:5px}
+  .cal-cell-route{font-size:9px}
+  .cal-cell-legs{display:none}
+  .cal-detail-flight{grid-template-columns:1fr 1fr;grid-template-areas:"num route" "time block" "tail tail";row-gap:4px}
+  .cal-detail-flight-num{grid-area:num}
+  .cal-detail-flight-route{grid-area:route;text-align:right}
+  .cal-detail-flight-time{grid-area:time}
+  .cal-detail-flight-block{grid-area:block;text-align:right}
+  .cal-detail-flight-tail{grid-area:tail}
 }
 `;
 
@@ -397,6 +441,31 @@ const flightMins = (dep,arr) => { const [dh,dm]=dep.split(":").map(Number),[ah,a
 const schedMins = (f) => f.schedBlockMins!=null ? f.schedBlockMins : flightMins(f.depTime,f.arrTime);
 const schedMinsIsEstimate = (f) => f.schedBlockMins==null;
 const rosterMins = r => r?.calendar?.reduce((a,d)=>a+d.flights.reduce((b,f)=>b+schedMins(f),0),0)??0;
+
+// "Best available" duration for a flight: prefer the actual (synced, post-flight)
+// block time when we have it — it's the real figure. Fall back to scheduled time
+// for flights that haven't happened yet (or haven't synced), since that's the
+// best estimate available until the real data arrives.
+const bestMins = (f, tailEntry) => tailEntry?.actualBlockMins!=null ? tailEntry.actualBlockMins : schedMins(f);
+const bestMinsIsActual = (tailEntry) => tailEntry?.actualBlockMins!=null;
+
+// Total minutes across all rosters using best-available duration per flight
+// (actual where synced, scheduled otherwise) — this is what the Dashboard's
+// "Total flight time" stat should show, since it reflects real flown hours
+// wherever possible rather than always showing the original plan.
+function totalMinsBest(rosters, tails) {
+  let total = 0;
+  (rosters||[]).forEach(r => {
+    (r.calendar||[]).forEach((d, di) => {
+      d.flights.forEach((f, fi) => {
+        const tk = `${r.id}-${di}-${fi}`;
+        total += bestMins(f, tails?.[tk]);
+      });
+    });
+  });
+  return total;
+}
+
 const allFlights = rs => (rs||[]).flatMap(r=>(r.calendar||[]).flatMap(d=>d.flights.map(f=>({...f,date:d.day,dow:d.dow,period:r.periodLabel,rosterId:r.id}))));
 const initials = name => name?.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase()||"?";
 
@@ -844,6 +913,7 @@ function Sidebar({user,page,setPage,onLogout}) {
   const isAdmin=user.role==="admin";
   const pilotNav=[
     {id:"dashboard",icon:"◈",label:"Dashboard"},
+    {id:"calendar",icon:"📅",label:"Calendar"},
     {id:"upload",icon:"↑",label:"Upload Roster"},
     {id:"logbook",icon:"📋",label:"Logbook"},
     {id:"settings",icon:"⚙",label:"Settings"},
@@ -886,11 +956,15 @@ function Sidebar({user,page,setPage,onLogout}) {
 // ─────────────────────────────────────────────────────────────────────────────
 function Dashboard({user,rosters,tails,setPage}) {
   const flights=allFlights(rosters);
-  const totalMins=rosters.reduce((a,r)=>a+rosterMins(r),0);
+  const totalMins=totalMinsBest(rosters, tails);
   const airports=new Set(flights.flatMap(f=>[f.dep,f.arr]));
   const tailLogged=Object.values(tails).filter(t=>t?.tail).length;
   const dutyDays=rosters.reduce((a,r)=>a+(r.calendar?.filter(d=>d.flights.length>0).length||0),0);
   const recent=[...flights].reverse().slice(0,5);
+  let flownCount=0;
+  rosters.forEach(r=>(r.calendar||[]).forEach((d,di)=>d.flights.forEach((f,fi)=>{
+    if(tails[`${r.id}-${di}-${fi}`]?.actualBlockMins!=null) flownCount++;
+  })));
 
   return (
     <div>
@@ -900,7 +974,7 @@ function Dashboard({user,rosters,tails,setPage}) {
       </div>
       <div className="dash-grid">
         {[
-          {label:"Total flight time",val:fmtMins(totalMins),sub:`across ${rosters.length} roster${rosters.length!==1?"s":""}`},
+          {label:"Total flight time",val:fmtMins(totalMins),sub:flownCount===flights.length&&flights.length>0?"all flown (actual)":`${flownCount} flown · ${flights.length-flownCount} scheduled`},
           {label:"Total legs",val:flights.length,sub:"flight segments"},
           {label:"Airports",val:airports.size,sub:"unique airports"},
           {label:"Tail #s logged",val:tailLogged,sub:`of ${flights.length} flights`},
@@ -936,6 +1010,7 @@ function Dashboard({user,rosters,tails,setPage}) {
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             <button className="btn-orange" style={{padding:"14px 16px",borderRadius:10,textAlign:"left"}} onClick={()=>setPage("upload")}>↑ Upload new roster</button>
             <button className="btn-teal" style={{padding:"14px 16px",borderRadius:10,textAlign:"left"}} onClick={()=>setPage("logbook")}>📋 Open logbook</button>
+            <button className="btn-sm-ghost" style={{padding:"14px 16px",borderRadius:10,textAlign:"left",fontSize:14}} onClick={()=>setPage("calendar")}>📅 View calendar</button>
           </div>
           {rosters.length>0&&(
             <div style={{marginTop:16}}>
@@ -1021,6 +1096,132 @@ function UploadPage({user, onRosterSaved}) {
       </div>
       <div className="notice">⚡ Tail numbers are filled in automatically once each flight lands — no setup needed. You can also tap 🔍 on any flight to look it up instantly.</div>
       <div className="warn">🌐 Scheduled block time uses the duration printed in your roster when available. If your roster only lists local clock times for a cross-timezone flight, the duration shown is estimated and marked with *. Actual (post-flight) block time is always calculated correctly across timezones.</div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CALENDAR
+// ─────────────────────────────────────────────────────────────────────────────
+function CalendarPage({rosters, tails}) {
+  const [selRoster,setSelRoster]=useState(0);
+  const [selDay,setSelDay]=useState(null);
+
+  const roster=rosters[selRoster];
+
+  if(!roster) return (
+    <div><div className="section-title">Calendar</div>
+      <div className="empty-state"><div className="empty-icon">📅</div>No rosters yet.</div></div>
+  );
+
+  const year=roster.year, monthNum=roster.monthNum;
+  const firstOfMonth=new Date(year,monthNum,1);
+  const startWeekday=firstOfMonth.getDay(); // 0=Sun
+  const daysInMonth=new Date(year,monthNum+1,0).getDate();
+  const monthName=new Date(year,monthNum,1).toLocaleString("default",{month:"long"});
+
+  const today=new Date();
+  const isCurrentMonth=today.getFullYear()===year && today.getMonth()===monthNum;
+
+  // Build a lookup: day number -> {dayData, dayIndex}
+  const dayMap={};
+  (roster.calendar||[]).forEach((d,di)=>{ dayMap[d.day]={d,di}; });
+
+  // Leading blank cells so day 1 lands in the correct weekday column
+  const leadingBlanks=Array.from({length:startWeekday});
+  const dayCells=Array.from({length:daysInMonth},(_,i)=>i+1);
+
+  function dayStatus(d,di){
+    if(!d || d.flights.length===0) return "off";
+    const allFlown=d.flights.every((_,fi)=>tails[`${roster.id}-${di}-${fi}`]?.actualBlockMins!=null);
+    if(allFlown) return "flown";
+    return "scheduled";
+  }
+
+  const selected = selDay!=null ? dayMap[selDay] : null;
+
+  return (
+    <div>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20,flexWrap:"wrap"}}>
+        <div className="section-title" style={{marginBottom:0}}>Calendar</div>
+        <div style={{marginLeft:"auto",display:"flex",gap:8,flexWrap:"wrap"}}>
+          {rosters.map((r,i)=>(
+            <button key={r.id} className={`month-tab ${selRoster===i?"active":""}`} onClick={()=>{setSelRoster(i);setSelDay(null);}}>
+              {r.periodLabel}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+        <div className="cal-month-title">{monthName} {year}</div>
+        <div className="cal-legend">
+          <span className="cal-legend-item"><span className="cal-dot flown"/>Flown</span>
+          <span className="cal-legend-item"><span className="cal-dot scheduled"/>Scheduled</span>
+          <span className="cal-legend-item"><span className="cal-dot off"/>Off</span>
+        </div>
+      </div>
+
+      <div className="cal-grid">
+        {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(w=>(
+          <div key={w} className="cal-weekday">{w}</div>
+        ))}
+        {leadingBlanks.map((_,i)=><div key={"b"+i} className="cal-cell cal-cell-blank"/>)}
+        {dayCells.map(day=>{
+          const entry=dayMap[day];
+          const status=dayStatus(entry?.d, entry?.di);
+          const isToday=isCurrentMonth && today.getDate()===day;
+          const isSelected=selDay===day;
+          const flights=entry?.d?.flights||[];
+          return (
+            <div
+              key={day}
+              className={`cal-cell ${status} ${isToday?"today":""} ${isSelected?"selected":""}`}
+              onClick={()=>setSelDay(isSelected?null:day)}
+            >
+              <div className="cal-cell-day">{day}</div>
+              {flights.length>0 && (
+                <div className="cal-cell-route">
+                  {flights.length===1
+                    ? `${flights[0].dep}–${flights[0].arr}`
+                    : `${flights[0].dep}…${flights[flights.length-1].arr}`}
+                </div>
+              )}
+              {flights.length>0 && <div className="cal-cell-legs">{flights.length} leg{flights.length!==1?"s":""}</div>}
+            </div>
+          );
+        })}
+      </div>
+
+      {selected && (
+        <div className="cal-detail">
+          <div className="cal-detail-header">
+            <div className="cal-detail-title">{selected.d.dow} {monthName} {selDay}</div>
+            <button className="cal-detail-close" onClick={()=>setSelDay(null)}>✕</button>
+          </div>
+          {selected.d.flights.length===0 ? (
+            <div className="cal-detail-off">Off day — no scheduled flights.</div>
+          ) : (
+            <div className="cal-detail-flights">
+              {selected.d.flights.map((f,fi)=>{
+                const tk=`${roster.id}-${selected.di}-${fi}`;
+                const entry=tails[tk]||{};
+                const isFlown=entry.actualBlockMins!=null;
+                const mins=isFlown?entry.actualBlockMins:schedMins(f);
+                return (
+                  <div className="cal-detail-flight" key={fi}>
+                    <div className="cal-detail-flight-num">{f.flightNum}</div>
+                    <div className="cal-detail-flight-route">{f.dep} → {f.arr}</div>
+                    <div className="cal-detail-flight-time">{isFlown?`${entry.actualDep}–${entry.actualArr}`:`${f.depTime}–${f.arrTime}`}</div>
+                    <div className="cal-detail-flight-block" style={{color:isFlown?C.teal:C.muted}}>{fmtMins(mins)}{isFlown?"":"*"}</div>
+                    {entry.tail && <div className="cal-detail-flight-tail">{entry.tail}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1260,7 +1461,7 @@ function SettingsPage({user, rosters, tails}) {
     a.download=`flightlog_${(user.name||"pilot").replace(/\s/g,"_")}_${new Date().toISOString().slice(0,10)}.csv`;
     a.click();
   }
-  const totalMins=rosters.reduce((a,r)=>a+rosterMins(r),0);
+  const totalMins=totalMinsBest(rosters, tails);
   const flights=allFlights(rosters);
   return (
     <div style={{maxWidth:600}}>
@@ -1528,7 +1729,7 @@ export default function App() {
   }
 
   const pageTitle = {
-    dashboard:"Dashboard", upload:"Upload Roster", logbook:"Logbook", settings:"Settings",
+    dashboard:"Dashboard", calendar:"Calendar", upload:"Upload Roster", logbook:"Logbook", settings:"Settings",
     "admin-overview":"Overview","admin-users":"User Management","admin-rosters":"All Rosters","admin-settings":"Settings"
   }[page]||page;
 
@@ -1557,6 +1758,7 @@ export default function App() {
             </div>
             <div className="app-body">
               {page==="dashboard"&&<Dashboard user={user} rosters={rosters} tails={tails} setPage={setPage}/>}
+              {page==="calendar"&&<CalendarPage rosters={rosters} tails={tails}/>}
               {page==="upload"&&<UploadPage user={user} onRosterSaved={handleRosterSaved}/>}
               {page==="logbook"&&<LogbookPage user={user} rosters={rosters} tails={tails} onTailSaved={handleTailSaved} onDeleteRoster={handleDeleteRoster}/>}
               {page==="settings"&&<SettingsPage user={user} rosters={rosters} tails={tails}/>}
