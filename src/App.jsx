@@ -291,9 +291,9 @@ input,textarea,select{font-family:${FB}}
 .day-summary-text{flex:1;font-size:13px;color:${C.silver}}
 .day-ft{font-family:${FM};font-size:12px;color:${C.muted}}
 .day-body{padding:12px 16px;display:flex;flex-direction:column;gap:8px;border-top:1px solid ${C.border}44}
-.col-heads{display:grid;grid-template-columns:88px 52px 52px 110px 60px 110px 88px 72px;gap:6px;padding:0 4px;margin-bottom:2px}
+.col-heads{display:grid;grid-template-columns:84px 48px 48px 100px 100px 56px 104px 60px 64px;gap:6px;padding:0 4px;margin-bottom:2px}
 .col-head{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${C.muted}}
-.flight-row{display:grid;grid-template-columns:88px 52px 52px 110px 60px 110px 88px 72px;gap:6px;align-items:center;background:${C.panel};padding:8px 12px;border-radius:8px}
+.flight-row{display:grid;grid-template-columns:84px 48px 48px 100px 100px 56px 104px 60px 64px;gap:6px;align-items:center;background:${C.panel};padding:8px 12px;border-radius:8px}
 .fr-num{font-family:${FM};font-size:12px;color:${C.orange}}
 .fr-apt{font-size:13px;font-weight:600;color:${C.white}}
 .fr-time{font-family:${FM};font-size:11px;color:${C.muted}}
@@ -360,7 +360,8 @@ input,textarea,select{font-family:${FB}}
   .app-content{margin-left:0}
   .dash-2col{grid-template-columns:1fr}
   .col-heads,.flight-row{grid-template-columns:80px 44px 44px 1fr 50px 80px}
-  .col-head:nth-child(7),.flight-row>*:nth-child(7),.col-head:nth-child(8),.flight-row>*:nth-child(8){display:none}
+  .col-head:nth-child(5),.flight-row>*:nth-child(5){display:none}
+  .col-head:nth-child(8),.flight-row>*:nth-child(8),.col-head:nth-child(9),.flight-row>*:nth-child(9){display:none}
   .lp-nav{padding:0 16px}
   .lp-section{padding:60px 16px}
 }
@@ -374,10 +375,11 @@ const allFlights = rs => (rs||[]).flatMap(r=>(r.calendar||[]).flatMap(d=>d.fligh
 const initials = name => name?.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase()||"?";
 
 function csvExport(rosters, tails) {
-  const rows=[["Date","Day","Flight","Dep","DepTime","Arr","ArrTime","AircraftType","Tail#","BlockTime","Period"]];
+  const rows=[["Date","Day","Flight","Dep","SchedDepTime","ActualDepTime","Arr","SchedArrTime","ActualArrTime","AircraftType","Tail#","BlockTime","Period"]];
   (rosters||[]).forEach(r=>(r.calendar||[]).forEach((d,di)=>d.flights.forEach((f,fi)=>{
     const k=`${r.id}-${di}-${fi}`;
-    rows.push([d.day,d.dow,f.flightNum,f.dep,f.depTime,f.arr,f.arrTime,f.acType,tails[k]||"",fmtMins(flightMins(f.depTime,f.arrTime)),r.periodLabel]);
+    const t=tails[k]||{};
+    rows.push([d.day,d.dow,f.flightNum,f.dep,f.depTime,t.actualDep||"",f.arr,f.arrTime,t.actualArr||"",f.acType,t.tail||"",fmtMins(flightMins(f.depTime,f.arrTime)),r.periodLabel]);
   })));
   return rows.map(r=>r.join(",")).join("\n");
 }
@@ -535,19 +537,30 @@ async function db_loadTails(userId) {
   if(isConfigured()) {
     const {data} = await sb.from("tail_logs").select("*","user_id=eq."+userId);
     const map={};
-    (data||[]).forEach(r=>{ map[`${r.roster_id}-${r.flight_key}`]=r.tail_number; });
+    (data||[]).forEach(r=>{
+      map[`${r.roster_id}-${r.flight_key}`] = {
+        tail: r.tail_number,
+        actualDep: r.actual_dep_time || "",
+        actualArr: r.actual_arr_time || "",
+      };
+    });
     return map;
   }
   return local.get("fl_tails_"+userId)||{};
 }
 
-async function db_saveTail(userId, rosterId, flightKey, tail) {
+async function db_saveTail(userId, rosterId, flightKey, tail, actualDep="", actualArr="") {
   if(isConfigured()) {
-    await sb.from("tail_logs").upsert({user_id:userId,roster_id:rosterId,flight_key:flightKey,tail_number:tail});
+    await sb.from("tail_logs").upsert({
+      user_id:userId, roster_id:rosterId, flight_key:flightKey,
+      tail_number:tail,
+      actual_dep_time: actualDep || null,
+      actual_arr_time: actualArr || null,
+    });
     return;
   }
   const map = local.get("fl_tails_"+userId)||{};
-  map[`${rosterId}-${flightKey}`]=tail;
+  map[`${rosterId}-${flightKey}`]={tail, actualDep, actualArr};
   local.set("fl_tails_"+userId, map);
 }
 
@@ -832,7 +845,7 @@ function Dashboard({user,rosters,tails,setPage}) {
   const flights=allFlights(rosters);
   const totalMins=rosters.reduce((a,r)=>a+rosterMins(r),0);
   const airports=new Set(flights.flatMap(f=>[f.dep,f.arr]));
-  const tailLogged=Object.values(tails).filter(Boolean).length;
+  const tailLogged=Object.values(tails).filter(t=>t?.tail).length;
   const dutyDays=rosters.reduce((a,r)=>a+(r.calendar?.filter(d=>d.flights.length>0).length||0),0);
   const recent=[...flights].reverse().slice(0,5);
 
@@ -862,14 +875,17 @@ function Dashboard({user,rosters,tails,setPage}) {
           <div className="dash-panel-title">Recent flights</div>
           {recent.length===0
             ? <div style={{color:C.muted,fontSize:13}}>No flights yet. <button onClick={()=>setPage("upload")} style={{background:"none",border:"none",color:C.teal,cursor:"pointer",fontSize:13}}>Upload a roster →</button></div>
-            : recent.map((f,i)=>(
-              <div className="recent-flight" key={i}>
-                <div className="rf-num">{f.flightNum}</div>
-                <div className="rf-route">{f.dep} → {f.arr}</div>
-                <div className="rf-time">{f.depTime}–{f.arrTime}</div>
-                {tails[`${f.rosterId}-${f.date}-${i}`]&&<div className="rf-tail">{tails[`${f.rosterId}-${f.date}-${i}`]}</div>}
-              </div>
-            ))
+            : recent.map((f,i)=>{
+              const t=tails[`${f.rosterId}-${f.date}-${i}`];
+              return (
+                <div className="recent-flight" key={i}>
+                  <div className="rf-num">{f.flightNum}</div>
+                  <div className="rf-route">{f.dep} → {f.arr}</div>
+                  <div className="rf-time">{f.depTime}–{f.arrTime}</div>
+                  {t?.tail&&<div className="rf-tail">{t.tail}</div>}
+                </div>
+              );
+            })
           }
         </div>
         <div className="dash-panel">
@@ -982,7 +998,7 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
   );
 
   const totalFlights=roster.calendar?.reduce((a,d)=>a+d.flights.length,0)||0;
-  const logged=roster.calendar?.reduce((a,d,di)=>a+d.flights.filter((_,fi)=>tails[`${roster.id}-${di}-${fi}`]).length,0)||0;
+  const logged=roster.calendar?.reduce((a,d,di)=>a+d.flights.filter((_,fi)=>tails[`${roster.id}-${di}-${fi}`]?.tail).length,0)||0;
 
   function fkey(di,fi){return `${di}-${fi}`;}
   function tkey(di,fi){return `${roster.id}-${di}-${fi}`;}
@@ -990,9 +1006,10 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
   async function saveTail(di,fi) {
     const k=fkey(di,fi), tk=tkey(di,fi);
     const val=(tmp[tk]??"").trim().toUpperCase();
+    const existing=tails[tk]||{};
     setSaving(p=>({...p,[tk]:true}));
-    await db_saveTail(user.id, roster.id, k, val);
-    onTailSaved(tk, val);
+    await db_saveTail(user.id, roster.id, k, val, existing.actualDep, existing.actualArr);
+    onTailSaved(tk, {tail:val, actualDep:existing.actualDep||"", actualArr:existing.actualArr||""});
     setSaving(p=>({...p,[tk]:false}));
   }
 
@@ -1005,8 +1022,8 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
       setLkStatus(p=>({...p,[tk]:res.tailNumber?"done":"notfound"}));
       if(res.tailNumber) {
         setTmp(p=>({...p,[tk]:res.tailNumber}));
-        await db_saveTail(user.id,roster.id,fkey(di,fi),res.tailNumber);
-        onTailSaved(tk,res.tailNumber);
+        await db_saveTail(user.id,roster.id,fkey(di,fi),res.tailNumber,res.actualDepTime,res.actualArrTime);
+        onTailSaved(tk,{tail:res.tailNumber, actualDep:res.actualDepTime||"", actualArr:res.actualArrTime||""});
       }
     } catch { setLkStatus(p=>({...p,[tk]:"error"})); }
   }
@@ -1034,8 +1051,8 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
 
       {roster.calendar?.map((d,di)=>{
         const isToday=d.day===today&&roster.monthNum===new Date().getMonth()&&roster.year===new Date().getFullYear();
-        const allSaved=d.flights.length>0&&d.flights.every((_,fi)=>tails[tkey(di,fi)]);
-        const someSaved=d.flights.some((_,fi)=>tails[tkey(di,fi)]);
+        const allSaved=d.flights.length>0&&d.flights.every((_,fi)=>tails[tkey(di,fi)]?.tail);
+        const someSaved=d.flights.some((_,fi)=>tails[tkey(di,fi)]?.tail);
         const dotCls=allSaved?"all":someSaved?"partial":"";
         const expanded=exp[di]??(isToday&&d.flights.length>0);
         const ft=d.flights.reduce((a,f)=>a+flightMins(f.depTime,f.arrTime),0);
@@ -1055,16 +1072,24 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
             {expanded&&d.flights.length>0&&(
               <div className="day-body">
                 <div className="col-heads">
-                  {["Flight","Dep","Arr","Times","Type","Tail #","Auto",""].map((h,i)=><div key={i} className="col-head">{h}</div>)}
+                  {["Flight","Dep","Arr","Sched","Actual","Type","Tail #","Auto",""].map((h,i)=><div key={i} className="col-head">{h}</div>)}
                 </div>
                 {d.flights.map((f,fi)=>{
-                  const tk=tkey(di,fi), saved=!!tails[tk], tv=tmp[tk]??tails[tk]??"", ls=lkStatus[tk];
+                  const tk=tkey(di,fi);
+                  const entry=tails[tk]||{};
+                  const saved=!!entry.tail;
+                  const tv=tmp[tk]??entry.tail??"";
+                  const ls=lkStatus[tk];
+                  const hasActual=entry.actualDep||entry.actualArr;
                   return (
                     <div key={fi} className="flight-row">
                       <div className="fr-num">{f.flightNum}</div>
                       <div className="fr-apt">{f.dep}</div>
                       <div className="fr-apt">{f.arr}</div>
                       <div className="fr-time">{f.depTime}–{f.arrTime}</div>
+                      <div className="fr-time" style={{color:hasActual?C.teal:C.muted}}>
+                        {hasActual ? `${entry.actualDep||"—"}–${entry.actualArr||"—"}` : "—"}
+                      </div>
                       <div className="fr-ac">{f.acType}</div>
                       <input className={`fr-input ${saved?"saved":""}`} placeholder="N-XXXXX" value={tv}
                         onChange={e=>setTmp(p=>({...p,[tk]:e.target.value}))}
