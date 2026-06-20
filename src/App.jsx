@@ -388,9 +388,7 @@ function csvExport(rosters, tails) {
   (rosters||[]).forEach(r=>(r.calendar||[]).forEach((d,di)=>d.flights.forEach((f,fi)=>{
     const k=`${r.id}-${di}-${fi}`;
     const t=tails[k]||{};
-    const actualBlock = t.actualBlockMins!=null
-      ? fmtMins(t.actualBlockMins)
-      : (t.actualDep&&t.actualArr ? fmtMins(flightMins(t.actualDep,t.actualArr)) : "");
+    const actualBlock = t.actualBlockMins!=null ? fmtMins(t.actualBlockMins) : "";
     rows.push([d.day,d.dow,f.flightNum,f.dep,f.depTime,t.actualDep||"",f.arr,f.arrTime,t.actualArr||"",f.acType,t.tail||"",fmtMins(schedMins(f)),actualBlock,r.periodLabel]);
   })));
   return rows.map(r=>r.join(",")).join("\n");
@@ -1052,8 +1050,9 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
   function startEditTimes(di,fi) {
     const tk=tkey(di,fi);
     const entry=tails[tk]||{};
-    const currentBlock = entry.actualBlockMins!=null ? fmtMins(entry.actualBlockMins)
-      : (entry.actualDep&&entry.actualArr ? fmtMins(flightMins(entry.actualDep,entry.actualArr)) : "");
+    // Only pre-fill with a server-computed value (timezone-correct). If we don't
+    // have one, leave blank rather than guessing wrong via naive local-time subtraction.
+    const currentBlock = entry.actualBlockMins!=null ? fmtMins(entry.actualBlockMins) : "";
     setTimeEdits(p=>({...p,[tk]:{actualDep:entry.actualDep||"",actualArr:entry.actualArr||"",blockHr:currentBlock}}));
     setEditingTimes(p=>({...p,[tk]:true}));
   }
@@ -1142,12 +1141,12 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
                   const tv=tmp[tk]??entry.tail??"";
                   const ls=lkStatus[tk];
                   const hasActual=entry.actualDep&&entry.actualArr;
-                  // Use the server-computed, timezone-correct duration when available
-                  // (calculated from UTC timestamps). Only fall back to naive local-time
-                  // subtraction if no server value exists yet (e.g. legacy data).
-                  const actualBlock = entry.actualBlockMins!=null
-                    ? fmtMins(entry.actualBlockMins)
-                    : (hasActual ? fmtMins(flightMins(entry.actualDep,entry.actualArr)) : null);
+                  // Only show a Block Hr figure when we have a server-computed,
+                  // timezone-correct value (from UTC timestamps). Never fall back to
+                  // naive local-time subtraction here — for cross-timezone flights it
+                  // produces a wildly wrong number (e.g. wrapping to ~24hrs) rather than
+                  // just being imprecise, which is worse than showing nothing.
+                  const actualBlock = entry.actualBlockMins!=null ? fmtMins(entry.actualBlockMins) : null;
                   const isEditing=editingTimes[tk];
                   const editVals=timeEdits[tk]||{actualDep:"",actualArr:"",blockHr:""};
                   return (
