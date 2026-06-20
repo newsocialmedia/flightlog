@@ -1,0 +1,54 @@
+{
+  "name": "FlightLog - Pilot Logbook",
+  "short_name": "FlightLog",
+  "description": "Automated pilot logbook — upload your roster, AI reads it, tail numbers and block times sync automatically.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FAFAF8",
+  "theme_color": "#1A2238",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": ["productivity", "travel", "utilities"],
+  "shortcuts": [
+    {
+      "name": "Upload Roster",
+      "short_name": "Upload",
+      "description": "Upload a new monthly roster",
+      "url": "/?page=upload",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Logbook",
+      "short_name": "Logbook",
+      "description": "View your flight logbook",
+      "url": "/?page=logbook",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}
