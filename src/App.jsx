@@ -421,14 +421,24 @@ async function aiParseRosterPdf(base64Pdf) {
 }
 
 // ── AERODATA LOOKUP ───────────────────────────────────────────────────────────
-async function lookupFlight(flightNum, date, apiKey) {
-  const fn=flightNum.replace(/\s+/g,"");
-  const r=await fetch(`https://aerodatabox.p.rapidapi.com/flights/number/${fn}/${date}`,{
-    headers:{"x-rapidapi-host":"aerodatabox.p.rapidapi.com","x-rapidapi-key":apiKey}
+// Goes through our Edge Function, which holds the shared AeroDataBox key
+// server-side. No pilot needs to provide their own key anymore.
+async function lookupFlight(flightNum, date) {
+  if (!SUPA_URL || !SUPA_ANON) {
+    throw new Error("Supabase is not configured.");
+  }
+  const r = await fetch(`${SUPA_URL}/functions/v1/lookup-flight`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${SUPA_ANON}`,
+      "apikey": SUPA_ANON,
+    },
+    body: JSON.stringify({ flightNum, date }),
   });
-  if(!r.ok) throw new Error(`API ${r.status}`);
-  const d=await r.json(), f=Array.isArray(d)?d[0]:d;
-  return { tailNumber:f?.aircraft?.reg||"", status:f?.status||"" };
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || `Lookup failed (${r.status})`);
+  return data;
 }
 
 // ── SUPABASE DATA LAYER ───────────────────────────────────────────────────────
@@ -950,7 +960,7 @@ function UploadPage({user, onRosterSaved}) {
           <div className={`parse-status ${status}`}>{msg}</div>
         )}
       </div>
-      <div className="warn">🔑 Live tail # lookup needs a RapidAPI key for AeroDataBox. Add it in Settings. Without it you can still enter tail numbers manually.</div>
+      <div className="notice">⚡ Tail numbers are filled in automatically once each flight lands — no setup needed. You can also tap 🔍 on any flight to look it up instantly.</div>
     </div>
   );
 }
@@ -963,7 +973,6 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
   const [exp,setExp]=useState({});
   const [tmp,setTmp]=useState({});
   const [lkStatus,setLkStatus]=useState({});
-  const [apiKey]=useState(()=>{try{return sessionStorage.getItem("fl_rapidapi")||"";}catch{return "";}});
   const [saving,setSaving]=useState({});
 
   const roster=rosters[sel];
@@ -988,12 +997,11 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
   }
 
   async function autoLookup(di,fi,f,day) {
-    if(!apiKey){alert("Add your RapidAPI key in Settings first.");return;}
     const tk=tkey(di,fi);
     setLkStatus(p=>({...p,[tk]:"loading"}));
     try {
       const date=`${roster.year}-${String(roster.monthNum+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
-      const res=await lookupFlight(f.flightNum,date,apiKey);
+      const res=await lookupFlight(f.flightNum,date);
       setLkStatus(p=>({...p,[tk]:res.tailNumber?"done":"notfound"}));
       if(res.tailNumber) {
         setTmp(p=>({...p,[tk]:res.tailNumber}));
@@ -1083,9 +1091,6 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
 // SETTINGS
 // ─────────────────────────────────────────────────────────────────────────────
 function SettingsPage({user, rosters, tails}) {
-  const [apiKey,setApiKey]=useState(()=>{try{return sessionStorage.getItem("fl_rapidapi")||"";}catch{return "";}});
-  const [saved,setSaved]=useState(false);
-  function saveKey(){try{sessionStorage.setItem("fl_rapidapi",apiKey);}catch{} setSaved(true);setTimeout(()=>setSaved(false),2000);}
   function download(){
     const csv=csvExport(rosters,tails);
     const a=document.createElement("a");
@@ -1098,7 +1103,7 @@ function SettingsPage({user, rosters, tails}) {
   return (
     <div style={{maxWidth:600}}>
       <div className="section-title">Settings</div>
-      <div className="section-sub">Manage your account, API keys, and data.</div>
+      <div className="section-sub">Manage your account and data.</div>
 
       <div className="card" style={{marginBottom:16}}>
         <div style={{fontSize:14,fontWeight:600,color:C.white,marginBottom:16}}>Account</div>
@@ -1116,13 +1121,8 @@ function SettingsPage({user, rosters, tails}) {
       </div>
 
       <div className="card" style={{marginBottom:16}}>
-        <div style={{fontSize:14,fontWeight:600,color:C.white,marginBottom:8}}>AeroDataBox API Key</div>
-        <p style={{fontSize:13,color:C.muted,marginBottom:12}}>Get a free key at <span style={{color:C.teal}}>rapidapi.com/aedbx/api/aerodatabox</span> for automatic tail number lookup.</p>
-        <div className="form-group">
-          <label className="form-label">RapidAPI Key</label>
-          <input className="form-input" type="password" placeholder="your-rapidapi-key" value={apiKey} onChange={e=>setApiKey(e.target.value)}/>
-        </div>
-        <button className="btn-teal" onClick={saveKey}>{saved?"✓ Saved":"Save Key"}</button>
+        <div style={{fontSize:14,fontWeight:600,color:C.white,marginBottom:8}}>⚡ Automatic Tail Number Sync</div>
+        <p style={{fontSize:13,color:C.muted}}>Tail numbers and block times are pulled automatically from live flight data shortly after each flight lands. No setup required — this runs in the background for every pilot.</p>
       </div>
 
       <div className="card">
@@ -1269,16 +1269,28 @@ function AdminSettings() {
         {configured ? "✓ Supabase connected and active." : "⚠ Supabase not connected. Set environment variables to go live."}
       </div>
       <div className="card" style={{marginBottom:16}}>
-        <div style={{fontSize:14,fontWeight:600,color:C.white,marginBottom:12}}>Environment Variables</div>
+        <div style={{fontSize:14,fontWeight:600,color:C.white,marginBottom:12}}>Environment Variables (Vercel)</div>
         <p style={{fontSize:13,color:C.muted,marginBottom:16}}>Set these in your <code style={{color:C.teal}}>.env</code> file locally and in Vercel → Project → Settings → Environment Variables.</p>
         {[
           ["VITE_SUPABASE_URL","https://your-project.supabase.co",configured?"✓":null],
           ["VITE_SUPABASE_ANON_KEY","eyJhbGci…",configured?"✓":null],
-          ["VITE_RAPIDAPI_KEY","your-rapidapi-key",null],
         ].map(([k,ph,ok])=>(
           <div key={k} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
             <div style={{fontFamily:FM,fontSize:12,color:ok?C.green:C.teal,minWidth:240}}>{k}</div>
             <div style={{fontSize:12,color:C.muted}}>{ok?"Connected ✓":ph}</div>
+          </div>
+        ))}
+      </div>
+      <div className="card" style={{marginBottom:16}}>
+        <div style={{fontSize:14,fontWeight:600,color:C.white,marginBottom:12}}>Edge Function Secrets (Supabase)</div>
+        <p style={{fontSize:13,color:C.muted,marginBottom:16}}>Set via Supabase Dashboard → Edge Functions → Manage secrets. Shared across all pilots — never exposed to the browser.</p>
+        {[
+          ["ANTHROPIC_API_KEY","for AI roster parsing"],
+          ["AERODATABOX_API_KEY","for tail number & block time sync"],
+        ].map(([k,desc])=>(
+          <div key={k} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+            <div style={{fontFamily:FM,fontSize:12,color:C.teal,minWidth:200}}>{k}</div>
+            <div style={{fontSize:12,color:C.muted}}>{desc}</div>
           </div>
         ))}
       </div>
