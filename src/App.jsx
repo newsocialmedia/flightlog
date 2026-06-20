@@ -433,7 +433,7 @@ async function aiParseRosterPdf(base64Pdf) {
 }
 
 // ── AERODATA LOOKUP ───────────────────────────────────────────────────────────
-// Goes through our Edge Function, which holds the shared AeroDataBox key
+// Goes through our Edge Function, which holds the shared FlightAware key
 // server-side. No pilot needs to provide their own key anymore.
 async function lookupFlight(flightNum, date) {
   if (!SUPA_URL || !SUPA_ANON) {
@@ -651,7 +651,7 @@ function LandingPage({onLogin}) {
         <p className="lp-section-sub">No manual entry. No spreadsheets. Upload a PDF and FlightLog does the rest.</p>
         <div className="features-grid">
           {[["🤖","AI Roster Parsing","Understands any airline roster format — crew IDs, flight numbers, layover airports, duty times. Upload once, read instantly."],
-            ["🛫","Live Tail Numbers","Connects to AeroDataBox to auto-fill aircraft registrations and actual block times the moment a flight completes."],
+            ["🛫","Live Tail Numbers","Connects to FlightAware to auto-fill aircraft registrations and actual block times the moment a flight completes."],
             ["📊","Pilot Dashboard","Total hours, legs flown, airports visited, duty days. All current, always accurate."],
             ["📥","CSV Export","Download your complete logbook anytime. Import into Logbook Pro, ForeFlight, or keep it in Excel."],
             ["🔒","Private by Default","Your data stays yours. Each pilot only sees their own logbook."],
@@ -1417,7 +1417,7 @@ function AdminSettings() {
         <p style={{fontSize:13,color:C.muted,marginBottom:16}}>Set via Supabase Dashboard → Edge Functions → Manage secrets. Shared across all pilots — never exposed to the browser.</p>
         {[
           ["ANTHROPIC_API_KEY","for AI roster parsing"],
-          ["AERODATABOX_API_KEY","for tail number & block time sync"],
+          ["FLIGHTAWARE_API_KEY","for tail number & block time sync"],
         ].map(([k,desc])=>(
           <div key={k} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
             <div style={{fontFamily:FM,fontSize:12,color:C.teal,minWidth:200}}>{k}</div>
