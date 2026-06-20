@@ -290,21 +290,26 @@ input,textarea,select{font-family:${FB}}
 .day-dot.partial{background:${C.gold};border-color:${C.gold}}
 .day-summary-text{flex:1;font-size:13px;color:${C.silver}}
 .day-ft{font-family:${FM};font-size:12px;color:${C.muted}}
-.day-body{padding:12px 16px;display:flex;flex-direction:column;gap:8px;border-top:1px solid ${C.border}44}
-.col-heads{display:grid;grid-template-columns:84px 48px 48px 100px 64px 56px 104px 60px 64px;gap:6px;padding:0 4px;margin-bottom:2px}
+.day-body{padding:12px 16px;display:flex;flex-direction:column;gap:10px;border-top:1px solid ${C.border}44}
+.col-heads-2row{display:grid;grid-template-columns:80px 46px 46px 110px 110px 64px 56px;gap:6px;padding:0 4px}
 .col-head{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${C.muted}}
-.flight-row{display:grid;grid-template-columns:84px 48px 48px 100px 64px 56px 104px 60px 64px;gap:6px;align-items:center;background:${C.panel};padding:8px 12px;border-radius:8px}
+.flight-row-2line{background:${C.panel};border-radius:8px;padding:8px 12px;display:flex;flex-direction:column;gap:8px}
+.flight-row-top{display:grid;grid-template-columns:80px 46px 46px 110px 110px 64px 56px;gap:6px;align-items:center}
+.flight-row-bottom{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding-top:6px;border-top:1px solid ${C.border}33}
 .fr-num{font-family:${FM};font-size:12px;color:${C.orange}}
 .fr-apt{font-size:13px;font-weight:600;color:${C.white}}
 .fr-time{font-family:${FM};font-size:11px;color:${C.muted}}
 .fr-ac{font-size:12px;color:${C.muted}}
-.fr-input{background:${C.surface};border:1px solid ${C.border};color:${C.white};padding:5px 8px;border-radius:6px;font-family:${FM};font-size:11px;width:100%;text-transform:uppercase;outline:none;transition:border-color .15s}
+.fr-time-edit{display:flex;align-items:center;gap:3px}
+.fr-time-input{background:${C.surface};border:1px solid ${C.teal}55;color:${C.white};padding:3px 5px;border-radius:5px;font-family:${FM};font-size:11px;width:48px;outline:none;text-align:center}
+.fr-time-input:focus{border-color:${C.teal}}
+.fr-input{background:${C.surface};border:1px solid ${C.border};color:${C.white};padding:6px 10px;border-radius:6px;font-family:${FM};font-size:12px;width:120px;text-transform:uppercase;outline:none;transition:border-color .15s}
 .fr-input:focus{border-color:${C.teal}}
 .fr-input.saved{border-color:${C.green}44}
-.fr-lookup{background:${C.teal}18;border:1px solid ${C.teal}44;color:${C.teal};padding:5px 8px;border-radius:6px;font-size:11px;font-weight:600;white-space:nowrap;transition:all .15s}
+.fr-lookup{background:${C.teal}18;border:1px solid ${C.teal}44;color:${C.teal};padding:6px 10px;border-radius:6px;font-size:11px;font-weight:600;white-space:nowrap;transition:all .15s}
 .fr-lookup:hover{background:${C.teal}30}
 .fr-lookup:disabled{opacity:.5;cursor:not-allowed}
-.fr-save{background:transparent;border:1px solid ${C.border};color:${C.silver};padding:5px 8px;border-radius:6px;font-size:11px;font-weight:600;transition:all .15s}
+.fr-save{background:transparent;border:1px solid ${C.border};color:${C.silver};padding:6px 10px;border-radius:6px;font-size:11px;font-weight:600;transition:all .15s;white-space:nowrap}
 .fr-save:hover{border-color:${C.orange};color:${C.orange}}
 .fr-save.ok{border-color:${C.green};color:${C.green}}
 
@@ -359,9 +364,7 @@ input,textarea,select{font-family:${FB}}
   .sidebar{display:none}
   .app-content{margin-left:0}
   .dash-2col{grid-template-columns:1fr}
-  .col-heads,.flight-row{grid-template-columns:80px 44px 44px 1fr 50px 80px}
-  .col-head:nth-child(5),.flight-row>*:nth-child(5){display:none}
-  .col-head:nth-child(8),.flight-row>*:nth-child(8),.col-head:nth-child(9),.flight-row>*:nth-child(9){display:none}
+  .col-heads-2row,.flight-row-top{grid-template-columns:64px 38px 38px 1fr 1fr 50px 40px}
   .lp-nav{padding:0 16px}
   .lp-section{padding:60px 16px}
 }
@@ -991,6 +994,8 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
   const [tmp,setTmp]=useState({});
   const [lkStatus,setLkStatus]=useState({});
   const [saving,setSaving]=useState({});
+  const [editingTimes,setEditingTimes]=useState({}); // tk -> bool
+  const [timeEdits,setTimeEdits]=useState({}); // tk -> {actualDep, actualArr}
 
   const roster=rosters[sel];
   if(!roster) return (
@@ -1023,10 +1028,37 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
       setLkStatus(p=>({...p,[tk]:res.tailNumber?"done":"notfound"}));
       if(res.tailNumber) {
         setTmp(p=>({...p,[tk]:res.tailNumber}));
-        await db_saveTail(user.id,roster.id,fkey(di,fi),res.tailNumber,res.actualDepTime,res.actualArrTime);
-        onTailSaved(tk,{tail:res.tailNumber, actualDep:res.actualDepTime||"", actualArr:res.actualArrTime||""});
+        const existing=tails[tk]||{};
+        const newDep=res.actualDepTime||existing.actualDep||"";
+        const newArr=res.actualArrTime||existing.actualArr||"";
+        await db_saveTail(user.id,roster.id,fkey(di,fi),res.tailNumber,newDep,newArr);
+        onTailSaved(tk,{tail:res.tailNumber, actualDep:newDep, actualArr:newArr});
       }
     } catch { setLkStatus(p=>({...p,[tk]:"error"})); }
+  }
+
+  function startEditTimes(di,fi) {
+    const tk=tkey(di,fi);
+    const entry=tails[tk]||{};
+    setTimeEdits(p=>({...p,[tk]:{actualDep:entry.actualDep||"",actualArr:entry.actualArr||""}}));
+    setEditingTimes(p=>({...p,[tk]:true}));
+  }
+
+  function cancelEditTimes(tk) {
+    setEditingTimes(p=>({...p,[tk]:false}));
+  }
+
+  async function saveTimes(di,fi) {
+    const k=fkey(di,fi), tk=tkey(di,fi);
+    const edit=timeEdits[tk]||{};
+    const existing=tails[tk]||{};
+    const dep=(edit.actualDep||"").trim();
+    const arr=(edit.actualArr||"").trim();
+    setSaving(p=>({...p,[tk]:true}));
+    await db_saveTail(user.id, roster.id, k, existing.tail||"", dep, arr);
+    onTailSaved(tk, {tail:existing.tail||"", actualDep:dep, actualArr:arr});
+    setSaving(p=>({...p,[tk]:false}));
+    setEditingTimes(p=>({...p,[tk]:false}));
   }
 
   const today=new Date().getDate();
@@ -1072,8 +1104,8 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
             </div>
             {expanded&&d.flights.length>0&&(
               <div className="day-body">
-                <div className="col-heads">
-                  {["Flight","Dep","Arr","Times","Block Hr","Type","Tail #","Auto",""].map((h,i)=><div key={i} className="col-head">{h}</div>)}
+                <div className="col-heads-2row">
+                  {["Flight","Dep","Arr","Sched Times","Actual Times","Block Hr","Type"].map((h,i)=><div key={i} className="col-head">{h}</div>)}
                 </div>
                 {d.flights.map((f,fi)=>{
                   const tk=tkey(di,fi);
@@ -1083,25 +1115,54 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
                   const ls=lkStatus[tk];
                   const hasActual=entry.actualDep&&entry.actualArr;
                   const actualBlock=hasActual?fmtMins(flightMins(entry.actualDep,entry.actualArr)):null;
+                  const isEditing=editingTimes[tk];
+                  const editVals=timeEdits[tk]||{actualDep:"",actualArr:""};
                   return (
-                    <div key={fi} className="flight-row">
-                      <div className="fr-num">{f.flightNum}</div>
-                      <div className="fr-apt">{f.dep}</div>
-                      <div className="fr-apt">{f.arr}</div>
-                      <div className="fr-time">{f.depTime}–{f.arrTime}</div>
-                      <div className="fr-time" style={{color:actualBlock?C.teal:C.muted,fontWeight:actualBlock?600:400}}>
-                        {actualBlock || "—"}
+                    <div key={fi} className="flight-row-2line">
+                      <div className="flight-row-top">
+                        <div className="fr-num">{f.flightNum}</div>
+                        <div className="fr-apt">{f.dep}</div>
+                        <div className="fr-apt">{f.arr}</div>
+                        <div className="fr-time">{f.depTime}–{f.arrTime}</div>
+                        {isEditing ? (
+                          <div className="fr-time-edit">
+                            <input className="fr-time-input" placeholder="HH:MM" value={editVals.actualDep}
+                              onChange={e=>setTimeEdits(p=>({...p,[tk]:{...editVals,actualDep:e.target.value}}))}/>
+                            <span style={{color:C.muted}}>–</span>
+                            <input className="fr-time-input" placeholder="HH:MM" value={editVals.actualArr}
+                              onChange={e=>setTimeEdits(p=>({...p,[tk]:{...editVals,actualArr:e.target.value}}))}/>
+                          </div>
+                        ) : (
+                          <div className="fr-time" style={{color:hasActual?C.teal:C.muted}}>
+                            {hasActual ? `${entry.actualDep}–${entry.actualArr}` : "—"}
+                          </div>
+                        )}
+                        <div className="fr-time" style={{color:actualBlock?C.teal:C.muted,fontWeight:actualBlock?600:400}}>
+                          {actualBlock || "—"}
+                        </div>
+                        <div className="fr-ac">{f.acType}</div>
                       </div>
-                      <div className="fr-ac">{f.acType}</div>
-                      <input className={`fr-input ${saved?"saved":""}`} placeholder="N-XXXXX" value={tv}
-                        onChange={e=>setTmp(p=>({...p,[tk]:e.target.value}))}
-                        onKeyDown={e=>e.key==="Enter"&&saveTail(di,fi)}/>
-                      <button className="fr-lookup" onClick={()=>autoLookup(di,fi,f,d.day)} disabled={ls==="loading"}>
-                        {ls==="loading"?<span className="spinner">⟳</span>:ls==="notfound"?"—":ls==="error"?"✗":"🔍"}
-                      </button>
-                      <button className={`fr-save ${saved?"ok":""}`} onClick={()=>saveTail(di,fi)} disabled={saving[tk]}>
-                        {saving[tk]?<span className="spinner">⟳</span>:saved?"✓":"Save"}
-                      </button>
+                      <div className="flight-row-bottom">
+                        <input className={`fr-input ${saved?"saved":""}`} placeholder="N-XXXXX" value={tv}
+                          onChange={e=>setTmp(p=>({...p,[tk]:e.target.value}))}
+                          onKeyDown={e=>e.key==="Enter"&&saveTail(di,fi)}/>
+                        <button className="fr-lookup" onClick={()=>autoLookup(di,fi,f,d.day)} disabled={ls==="loading"}>
+                          {ls==="loading"?<span className="spinner">⟳</span>:ls==="notfound"?"—":ls==="error"?"✗":"🔍 Auto"}
+                        </button>
+                        <button className={`fr-save ${saved?"ok":""}`} onClick={()=>saveTail(di,fi)} disabled={saving[tk]}>
+                          {saving[tk]?<span className="spinner">⟳</span>:saved?"✓ Saved":"Save"}
+                        </button>
+                        {isEditing ? (
+                          <>
+                            <button className="fr-save ok" onClick={()=>saveTimes(di,fi)} disabled={saving[tk]}>
+                              {saving[tk]?<span className="spinner">⟳</span>:"✓ Save times"}
+                            </button>
+                            <button className="fr-save" onClick={()=>cancelEditTimes(tk)}>Cancel</button>
+                          </>
+                        ) : (
+                          <button className="fr-save" onClick={()=>startEditTimes(di,fi)}>✏️ Edit times</button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
