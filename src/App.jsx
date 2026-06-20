@@ -291,9 +291,9 @@ input,textarea,select{font-family:${FB}}
 .day-summary-text{flex:1;font-size:13px;color:${C.silver}}
 .day-ft{font-family:${FM};font-size:12px;color:${C.muted}}
 .day-body{padding:12px 16px;display:flex;flex-direction:column;gap:8px;border-top:1px solid ${C.border}44}
-.col-heads{display:grid;grid-template-columns:84px 48px 48px 100px 100px 56px 104px 60px 64px;gap:6px;padding:0 4px;margin-bottom:2px}
+.col-heads{display:grid;grid-template-columns:84px 48px 48px 100px 64px 56px 104px 60px 64px;gap:6px;padding:0 4px;margin-bottom:2px}
 .col-head{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${C.muted}}
-.flight-row{display:grid;grid-template-columns:84px 48px 48px 100px 100px 56px 104px 60px 64px;gap:6px;align-items:center;background:${C.panel};padding:8px 12px;border-radius:8px}
+.flight-row{display:grid;grid-template-columns:84px 48px 48px 100px 64px 56px 104px 60px 64px;gap:6px;align-items:center;background:${C.panel};padding:8px 12px;border-radius:8px}
 .fr-num{font-family:${FM};font-size:12px;color:${C.orange}}
 .fr-apt{font-size:13px;font-weight:600;color:${C.white}}
 .fr-time{font-family:${FM};font-size:11px;color:${C.muted}}
@@ -375,11 +375,12 @@ const allFlights = rs => (rs||[]).flatMap(r=>(r.calendar||[]).flatMap(d=>d.fligh
 const initials = name => name?.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase()||"?";
 
 function csvExport(rosters, tails) {
-  const rows=[["Date","Day","Flight","Dep","SchedDepTime","ActualDepTime","Arr","SchedArrTime","ActualArrTime","AircraftType","Tail#","BlockTime","Period"]];
+  const rows=[["Date","Day","Flight","Dep","SchedDepTime","ActualDepTime","Arr","SchedArrTime","ActualArrTime","AircraftType","Tail#","SchedBlockTime","ActualBlockTime","Period"]];
   (rosters||[]).forEach(r=>(r.calendar||[]).forEach((d,di)=>d.flights.forEach((f,fi)=>{
     const k=`${r.id}-${di}-${fi}`;
     const t=tails[k]||{};
-    rows.push([d.day,d.dow,f.flightNum,f.dep,f.depTime,t.actualDep||"",f.arr,f.arrTime,t.actualArr||"",f.acType,t.tail||"",fmtMins(flightMins(f.depTime,f.arrTime)),r.periodLabel]);
+    const hasActual=t.actualDep&&t.actualArr;
+    rows.push([d.day,d.dow,f.flightNum,f.dep,f.depTime,t.actualDep||"",f.arr,f.arrTime,t.actualArr||"",f.acType,t.tail||"",fmtMins(flightMins(f.depTime,f.arrTime)),hasActual?fmtMins(flightMins(t.actualDep,t.actualArr)):"",r.periodLabel]);
   })));
   return rows.map(r=>r.join(",")).join("\n");
 }
@@ -881,7 +882,7 @@ function Dashboard({user,rosters,tails,setPage}) {
                 <div className="recent-flight" key={i}>
                   <div className="rf-num">{f.flightNum}</div>
                   <div className="rf-route">{f.dep} → {f.arr}</div>
-                  <div className="rf-time">{f.depTime}–{f.arrTime}</div>
+                  <div className="rf-time">{fmtMins(flightMins(f.depTime,f.arrTime))}</div>
                   {t?.tail&&<div className="rf-tail">{t.tail}</div>}
                 </div>
               );
@@ -1072,7 +1073,7 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
             {expanded&&d.flights.length>0&&(
               <div className="day-body">
                 <div className="col-heads">
-                  {["Flight","Dep","Arr","Sched","Actual","Type","Tail #","Auto",""].map((h,i)=><div key={i} className="col-head">{h}</div>)}
+                  {["Flight","Dep","Arr","Times","Block Hr","Type","Tail #","Auto",""].map((h,i)=><div key={i} className="col-head">{h}</div>)}
                 </div>
                 {d.flights.map((f,fi)=>{
                   const tk=tkey(di,fi);
@@ -1080,15 +1081,16 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
                   const saved=!!entry.tail;
                   const tv=tmp[tk]??entry.tail??"";
                   const ls=lkStatus[tk];
-                  const hasActual=entry.actualDep||entry.actualArr;
+                  const hasActual=entry.actualDep&&entry.actualArr;
+                  const actualBlock=hasActual?fmtMins(flightMins(entry.actualDep,entry.actualArr)):null;
                   return (
                     <div key={fi} className="flight-row">
                       <div className="fr-num">{f.flightNum}</div>
                       <div className="fr-apt">{f.dep}</div>
                       <div className="fr-apt">{f.arr}</div>
                       <div className="fr-time">{f.depTime}–{f.arrTime}</div>
-                      <div className="fr-time" style={{color:hasActual?C.teal:C.muted}}>
-                        {hasActual ? `${entry.actualDep||"—"}–${entry.actualArr||"—"}` : "—"}
+                      <div className="fr-time" style={{color:actualBlock?C.teal:C.muted,fontWeight:actualBlock?600:400}}>
+                        {actualBlock || "—"}
                       </div>
                       <div className="fr-ac">{f.acType}</div>
                       <input className={`fr-input ${saved?"saved":""}`} placeholder="N-XXXXX" value={tv}
