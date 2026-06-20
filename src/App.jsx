@@ -102,19 +102,26 @@ const origFetch = window.fetch.bind(window);
 window._sbFetch = origFetch;
 
 // ── DESIGN TOKENS ─────────────────────────────────────────────────────────────
+// Light, minimalist theme inspired by a printed paper flight logbook: warm
+// off-white pages, deep ink-navy text, hairline stone rules, and a single
+// restrained "barn red" accent (the color of classic aviation instrument
+// markings) used sparingly for emphasis and calls to action.
 const C = {
-  base:"#080E14", surface:"#0E1C27", panel:"#132233", panelLt:"#1A2E42",
-  border:"#1F3347", orange:"#FF6B2B", orangeDim:"#A03D10",
-  teal:"#00C4B4", tealDim:"#007A72", white:"#F0F6FC", silver:"#8BA0B4",
-  muted:"#4A6070", green:"#2ECC71", red:"#E74C3C", gold:"#F5A623",
+  base:"#FAFAF8", surface:"#FFFFFF", panel:"#F4F2EC", panelLt:"#EEEBE2",
+  border:"#E5E2D8", red:"#C9472B", redDim:"#A23A22",
+  teal:"#0E7C7B", tealDim:"#0A5F5E", ink:"#1A2238", silver:"#4B4D45",
+  muted:"#8B8D7F", green:"#1F8A4C", gold:"#9A6B0C",
 };
-const FD = "'Barlow Condensed',sans-serif";
+C.orange = C.red;       // alias: existing code uses C.orange as the accent color
+C.orangeDim = C.redDim; // alias: existing code uses C.orangeDim for hover states
+C.white = C.ink;         // alias: existing code uses C.white as primary text color
+const FD = "'Fraunces',serif";
 const FB = "'Inter',sans-serif";
 const FM = "'JetBrains Mono',monospace";
 
 // ── STYLES ────────────────────────────────────────────────────────────────────
 const STYLES = `
-@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
 body{background:${C.base};color:${C.white};font-family:${FB};line-height:1.5}
@@ -125,79 +132,89 @@ input,textarea,select{font-family:${FB}}
 ::-webkit-scrollbar-thumb{background:${C.border};border-radius:3px}
 
 /* NAV */
-.lp-nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;gap:24px;padding:0 48px;height:64px;background:${C.base}cc;backdrop-filter:blur(12px);border-bottom:1px solid ${C.border}44}
-.lp-logo{font-family:${FD};font-size:24px;font-weight:800;color:${C.white};letter-spacing:2px}
-.lp-logo span{color:${C.orange}}
-.lp-nav-links{display:flex;gap:28px;margin-left:auto}
+.lp-nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;gap:24px;padding:0 48px;height:72px;background:${C.base}ee;backdrop-filter:blur(10px);border-bottom:1px solid ${C.border}}
+.lp-logo{font-family:${FD};font-size:22px;font-weight:600;color:${C.ink};letter-spacing:.2px;font-style:italic}
+.lp-logo span{color:${C.red};font-style:normal;font-weight:700}
+.lp-nav-links{display:flex;gap:32px;margin-left:auto}
 .lp-nav-link{font-size:14px;color:${C.silver};transition:color .15s;background:none;border:none}
-.lp-nav-link:hover{color:${C.white}}
-.lp-nav-cta{background:${C.orange};color:#fff;border:none;padding:9px 22px;border-radius:6px;font-size:14px;font-weight:600;transition:background .15s}
-.lp-nav-cta:hover{background:#e85a1e}
+.lp-nav-link:hover{color:${C.ink}}
+.lp-nav-actions{display:flex;align-items:center;gap:10px}
+.lp-nav-login{background:none;border:none;color:${C.ink};font-size:14px;font-weight:500;padding:9px 14px;transition:opacity .15s}
+.lp-nav-login:hover{opacity:.65}
+.lp-nav-cta{background:${C.ink};color:${C.base};border:none;padding:10px 20px;border-radius:7px;font-size:14px;font-weight:600;transition:background .15s}
+.lp-nav-cta:hover{background:${C.red}}
 
 /* HERO */
-.lp-hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:120px 24px 80px;position:relative;overflow:hidden}
-.lp-hero-bg{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 80% 60% at 50% 0%,${C.teal}18 0%,transparent 70%),radial-gradient(ellipse 40% 40% at 80% 80%,${C.orange}12 0%,transparent 60%)}
-.lp-hero-grid{position:absolute;inset:0;pointer-events:none;background-image:linear-gradient(${C.border}22 1px,transparent 1px),linear-gradient(90deg,${C.border}22 1px,transparent 1px);background-size:48px 48px;mask-image:radial-gradient(ellipse 100% 80% at 50% 0%,black 30%,transparent 100%)}
-.lp-eyebrow{display:inline-flex;align-items:center;gap:8px;background:${C.teal}18;border:1px solid ${C.teal}44;color:${C.teal};font-size:12px;font-weight:600;letter-spacing:2px;padding:6px 16px;border-radius:100px;margin-bottom:28px;text-transform:uppercase}
+.lp-hero{min-height:92vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:140px 24px 72px;position:relative;overflow:hidden}
+.lp-hero-bg{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 70% 50% at 50% -10%,${C.teal}0d 0%,transparent 65%)}
+.lp-eyebrow{display:inline-flex;align-items:center;gap:8px;background:${C.surface};border:1px solid ${C.border};color:${C.teal};font-size:12px;font-weight:600;letter-spacing:1.5px;padding:7px 16px;border-radius:100px;margin-bottom:32px;text-transform:uppercase}
 .lp-eyebrow-dot{width:6px;height:6px;border-radius:50%;background:${C.teal};animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
-.lp-headline{font-family:${FD};font-size:clamp(52px,8vw,96px);font-weight:800;line-height:.95;letter-spacing:-1px;color:${C.white};margin-bottom:24px}
-.lp-headline em{color:${C.orange};font-style:normal}
-.lp-sub{font-size:clamp(16px,2vw,20px);color:${C.silver};max-width:540px;margin:0 auto 40px;line-height:1.6}
-.lp-hero-btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:48px}
-.btn-primary{background:${C.orange};color:#fff;border:none;padding:14px 32px;border-radius:8px;font-size:16px;font-weight:700;transition:all .15s}
-.btn-primary:hover{background:#e85a1e;transform:translateY(-1px)}
-.btn-ghost{background:transparent;color:${C.silver};border:1px solid ${C.border};padding:14px 32px;border-radius:8px;font-size:16px;font-weight:500;transition:all .15s}
-.btn-ghost:hover{border-color:${C.silver};color:${C.white}}
-.tape-wrap{width:100%;max-width:600px;margin:0 auto;position:relative;height:4px;background:${C.border}}
-.tape-fill{position:absolute;left:0;top:0;height:100%;background:linear-gradient(90deg,${C.teal},${C.orange});animation:fillup 8s linear infinite}
-.tape-plane{position:absolute;top:-11px;font-size:22px;animation:fly 8s linear infinite}
-@keyframes fillup{0%{width:0%}100%{width:100%}}
-@keyframes fly{0%{left:0;opacity:0}5%{opacity:1}90%{opacity:1}100%{left:calc(100% - 24px);opacity:0}}
+.lp-headline{font-family:${FD};font-size:clamp(44px,7vw,84px);font-weight:500;line-height:1.04;letter-spacing:-.5px;color:${C.ink};margin-bottom:26px}
+.lp-headline em{color:${C.red};font-style:italic;font-weight:600}
+.lp-sub{font-size:clamp(16px,1.6vw,19px);color:${C.silver};max-width:520px;margin:0 auto 44px;line-height:1.65}
+.lp-hero-btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:56px}
+.btn-primary{background:${C.ink};color:${C.base};border:none;padding:14px 30px;border-radius:8px;font-size:15px;font-weight:600;transition:all .15s}
+.btn-primary:hover{background:${C.red};transform:translateY(-1px)}
+.btn-ghost{background:transparent;color:${C.ink};border:1px solid ${C.border};padding:14px 30px;border-radius:8px;font-size:15px;font-weight:500;transition:all .15s}
+.btn-ghost:hover{border-color:${C.ink}}
 
-/* STATS BAR */
+/* Signature element: a logbook ruler — a hairline with tick marks like the
+   time-scale on a printed flight log, with a single red marker indicating
+   "logged so far". Quiet, literal, on-brand. No looping animation; this is
+   a still, confident mark rather than a decorative loop. */
+.ledger{width:100%;max-width:640px;margin:0 auto;position:relative}
+.ledger-line{position:relative;height:1px;background:${C.border};margin-bottom:10px}
+.ledger-ticks{display:flex;justify-content:space-between;position:absolute;top:-5px;left:0;right:0}
+.ledger-tick{width:1px;height:10px;background:${C.border}}
+.ledger-tick.major{height:14px;background:${C.silver}}
+.ledger-fill{position:absolute;left:0;top:0;height:1px;width:38%;background:${C.red}}
+.ledger-marker{position:absolute;left:38%;top:-4px;width:9px;height:9px;border-radius:50%;background:${C.red};transform:translateX(-50%)}
+.ledger-caption{display:flex;justify-content:space-between;font-family:${FM};font-size:11px;color:${C.muted};letter-spacing:.5px;margin-top:14px}
+
+
 .lp-stats{display:flex;justify-content:center;border-top:1px solid ${C.border};border-bottom:1px solid ${C.border};flex-wrap:wrap}
-.lp-stat{padding:24px 40px;border-right:1px solid ${C.border};text-align:center}
+.lp-stat{padding:28px 40px;border-right:1px solid ${C.border};text-align:center}
 .lp-stat:last-child{border-right:none}
-.lp-stat-num{font-family:${FD};font-size:40px;font-weight:700;color:${C.orange}}
+.lp-stat-num{font-family:${FD};font-size:38px;font-weight:600;color:${C.ink}}
 .lp-stat-lbl{font-size:13px;color:${C.silver};margin-top:4px}
 
 /* FEATURES */
 .lp-section{padding:96px 48px;max-width:1100px;margin:0 auto}
 .lp-section-eyebrow{font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:${C.teal};margin-bottom:12px}
-.lp-section-title{font-family:${FD};font-size:clamp(32px,4vw,52px);font-weight:700;color:${C.white};margin-bottom:16px;line-height:1.1}
+.lp-section-title{font-family:${FD};font-size:clamp(30px,3.6vw,46px);font-weight:500;color:${C.ink};margin-bottom:16px;line-height:1.15}
 .lp-section-sub{font-size:16px;color:${C.silver};max-width:520px}
-.features-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px;margin-top:48px}
+.features-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px;margin-top:48px}
 .feature-card{background:${C.surface};border:1px solid ${C.border};border-radius:12px;padding:28px;transition:border-color .2s,transform .2s}
-.feature-card:hover{border-color:${C.teal}55;transform:translateY(-2px)}
-.feature-icon{width:44px;height:44px;border-radius:10px;background:${C.teal}18;display:flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:16px}
-.feature-title{font-size:16px;font-weight:600;color:${C.white};margin-bottom:8px}
+.feature-card:hover{border-color:${C.red}66;transform:translateY(-2px)}
+.feature-icon{width:42px;height:42px;border-radius:10px;background:${C.panel};display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:16px}
+.feature-title{font-size:16px;font-weight:600;color:${C.ink};margin-bottom:8px}
 .feature-desc{font-size:14px;color:${C.silver};line-height:1.6}
 
 /* PRICING */
-.pricing-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px;margin-top:48px}
+.pricing-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;margin-top:48px}
 .price-card{background:${C.surface};border:1px solid ${C.border};border-radius:14px;padding:32px;position:relative}
-.price-card.featured{border-color:${C.orange};background:linear-gradient(135deg,${C.panel},${C.surface})}
-.price-badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:${C.orange};color:#fff;font-size:11px;font-weight:700;padding:4px 14px;border-radius:100px;letter-spacing:1px;white-space:nowrap}
+.price-card.featured{border-color:${C.ink};box-shadow:0 4px 24px ${C.ink}0d}
+.price-badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:${C.ink};color:${C.base};font-size:11px;font-weight:700;padding:4px 14px;border-radius:100px;letter-spacing:1px;white-space:nowrap}
 .price-plan{font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:${C.silver};margin-bottom:8px}
-.price-amount{font-family:${FD};font-size:48px;font-weight:800;color:${C.white};line-height:1}
+.price-amount{font-family:${FD};font-size:46px;font-weight:600;color:${C.ink};line-height:1}
 .price-period{font-size:14px;color:${C.muted};margin-left:4px}
 .price-desc{font-size:13px;color:${C.silver};margin:12px 0 24px}
 .price-features{list-style:none;display:flex;flex-direction:column;gap:10px;margin-bottom:28px}
 .price-features li{font-size:13px;color:${C.silver};display:flex;align-items:center;gap:8px}
 .price-features li::before{content:"✓";color:${C.teal};font-weight:700;flex-shrink:0}
-.price-cta{width:100%;padding:12px;border-radius:8px;font-size:14px;font-weight:700;border:none;letter-spacing:.3px;transition:all .15s}
-.price-cta-primary{background:${C.orange};color:#fff}
-.price-cta-primary:hover{background:#e85a1e}
-.price-cta-ghost{background:transparent;color:${C.silver};border:1px solid ${C.border}}
-.price-cta-ghost:hover{border-color:${C.silver};color:${C.white}}
+.price-cta{width:100%;padding:12px;border-radius:8px;font-size:14px;font-weight:600;border:none;letter-spacing:.2px;transition:all .15s}
+.price-cta-primary{background:${C.ink};color:${C.base}}
+.price-cta-primary:hover{background:${C.red}}
+.price-cta-ghost{background:transparent;color:${C.ink};border:1px solid ${C.border}}
+.price-cta-ghost:hover{border-color:${C.ink}}
 
 /* HOW */
 .how-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));background:${C.surface};border-radius:14px;border:1px solid ${C.border};margin-top:48px}
 .how-step{padding:32px 24px;border-right:1px solid ${C.border}}
 .how-step:last-child{border-right:none}
-.how-num{font-family:${FD};font-size:48px;font-weight:800;color:${C.border};line-height:1;margin-bottom:12px}
-.how-title{font-size:15px;font-weight:600;color:${C.white};margin-bottom:6px}
+.how-num{font-family:${FD};font-size:44px;font-weight:500;color:${C.border};line-height:1;margin-bottom:12px;font-style:italic}
+.how-title{font-size:15px;font-weight:600;color:${C.ink};margin-bottom:6px}
 .how-desc{font-size:13px;color:${C.silver};line-height:1.6}
 
 /* FOOTER */
@@ -205,57 +222,57 @@ input,textarea,select{font-family:${FB}}
 .lp-footer-copy{font-size:13px;color:${C.muted};margin-left:auto}
 
 /* AUTH */
-.auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:radial-gradient(ellipse 60% 60% at 50% 0%,${C.teal}12 0%,transparent 70%)}
-.auth-card{background:${C.surface};border:1px solid ${C.border};border-radius:16px;padding:40px;width:100%;max-width:420px}
-.auth-logo{font-family:${FD};font-size:28px;font-weight:800;color:${C.white};text-align:center;margin-bottom:4px}
-.auth-logo span{color:${C.orange}}
+.auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:${C.base}}
+.auth-card{background:${C.surface};border:1px solid ${C.border};border-radius:16px;padding:40px;width:100%;max-width:420px;box-shadow:0 8px 40px ${C.ink}08}
+.auth-logo{font-family:${FD};font-size:26px;font-weight:500;color:${C.ink};text-align:center;margin-bottom:4px;font-style:italic}
+.auth-logo span{color:${C.red};font-style:normal;font-weight:700}
 .auth-tagline{font-size:13px;color:${C.silver};text-align:center;margin-bottom:32px}
 .auth-tabs{display:flex;background:${C.panel};border-radius:8px;padding:4px;margin-bottom:28px}
 .auth-tab{flex:1;padding:8px;text-align:center;font-size:13px;font-weight:500;color:${C.muted};border:none;background:transparent;border-radius:6px;transition:all .15s}
-.auth-tab.active{background:${C.panelLt};color:${C.white}}
+.auth-tab.active{background:${C.surface};color:${C.ink};box-shadow:0 1px 3px ${C.ink}14}
 .form-group{margin-bottom:16px}
 .form-label{display:block;font-size:12px;font-weight:600;color:${C.silver};letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px}
-.form-input{width:100%;background:${C.panel};border:1px solid ${C.border};color:${C.white};padding:11px 14px;border-radius:8px;font-size:14px;outline:none;transition:border-color .15s}
+.form-input{width:100%;background:${C.base};border:1px solid ${C.border};color:${C.ink};padding:11px 14px;border-radius:8px;font-size:14px;outline:none;transition:border-color .15s}
 .form-input:focus{border-color:${C.teal}}
 .form-input::placeholder{color:${C.muted}}
-.form-select{width:100%;background:${C.panel};border:1px solid ${C.border};color:${C.white};padding:11px 14px;border-radius:8px;font-size:14px;outline:none}
-.btn-full{width:100%;padding:13px;border-radius:8px;font-size:15px;font-weight:700;border:none;background:${C.orange};color:#fff;letter-spacing:.3px;transition:background .15s;margin-top:8px}
-.btn-full:hover{background:#e85a1e}
+.form-select{width:100%;background:${C.base};border:1px solid ${C.border};color:${C.ink};padding:11px 14px;border-radius:8px;font-size:14px;outline:none}
+.btn-full{width:100%;padding:13px;border-radius:8px;font-size:15px;font-weight:600;border:none;background:${C.ink};color:${C.base};letter-spacing:.2px;transition:background .15s;margin-top:8px}
+.btn-full:hover{background:${C.red}}
 .btn-full:disabled{opacity:.6;cursor:not-allowed}
-.auth-error{background:${C.red}18;border:1px solid ${C.red}44;color:${C.red};font-size:13px;padding:10px 14px;border-radius:8px;margin-bottom:16px}
-.auth-success{background:${C.green}18;border:1px solid ${C.green}44;color:${C.green};font-size:13px;padding:10px 14px;border-radius:8px;margin-bottom:16px}
+.auth-error{background:${C.red}14;border:1px solid ${C.red}33;color:${C.redDim};font-size:13px;padding:10px 14px;border-radius:8px;margin-bottom:16px}
+.auth-success{background:${C.green}14;border:1px solid ${C.green}33;color:${C.green};font-size:13px;padding:10px 14px;border-radius:8px;margin-bottom:16px}
 .auth-back{background:none;border:none;color:${C.teal};font-size:13px;margin-top:20px;display:block;text-align:center}
 
 /* APP SHELL */
 .app-shell{display:flex;min-height:100vh}
 .sidebar{width:224px;background:${C.surface};border-right:1px solid ${C.border};display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:50}
 .sidebar-logo{padding:20px 20px 16px;border-bottom:1px solid ${C.border}}
-.sidebar-logo-text{font-family:${FD};font-size:22px;font-weight:800;color:${C.white}}
-.sidebar-logo-text span{color:${C.orange}}
+.sidebar-logo-text{font-family:${FD};font-size:21px;font-weight:500;color:${C.ink};font-style:italic}
+.sidebar-logo-text span{color:${C.red};font-style:normal;font-weight:700}
 .sidebar-plan{font-size:10px;color:${C.muted};letter-spacing:1px;text-transform:uppercase;margin-top:2px}
 .sidebar-nav{flex:1;padding:16px 12px;display:flex;flex-direction:column;gap:2px;overflow-y:auto}
 .sidebar-section{font-size:10px;color:${C.muted};letter-spacing:1.5px;text-transform:uppercase;padding:12px 8px 6px}
 .sidebar-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;font-size:13px;color:${C.silver};background:none;border:none;width:100%;text-align:left;transition:all .15s}
-.sidebar-item:hover{background:${C.panel};color:${C.white}}
-.sidebar-item.active{background:${C.orange}18;color:${C.orange}}
+.sidebar-item:hover{background:${C.panel};color:${C.ink}}
+.sidebar-item.active{background:${C.red}14;color:${C.red}}
 .sidebar-item-icon{font-size:15px;width:20px;text-align:center;flex-shrink:0}
 .sidebar-footer{padding:16px 12px;border-top:1px solid ${C.border}}
 .sidebar-user{display:flex;align-items:center;gap:10px}
-.avatar{width:34px;height:34px;border-radius:50%;background:${C.orange}28;border:1px solid ${C.orange}55;display:flex;align-items:center;justify-content:center;font-family:${FD};font-size:15px;font-weight:700;color:${C.orange};flex-shrink:0}
-.sidebar-user-name{font-size:13px;font-weight:600;color:${C.white}}
+.avatar{width:34px;height:34px;border-radius:50%;background:${C.red}14;border:1px solid ${C.red}33;display:flex;align-items:center;justify-content:center;font-family:${FD};font-size:14px;font-weight:600;color:${C.red};flex-shrink:0}
+.sidebar-user-name{font-size:13px;font-weight:600;color:${C.ink}}
 .sidebar-user-role{font-size:11px;color:${C.muted}}
 .sidebar-logout{background:none;border:none;color:${C.muted};font-size:18px;margin-left:auto;padding:4px;transition:color .15s}
 .sidebar-logout:hover{color:${C.red}}
 .app-content{margin-left:224px;flex:1;min-height:100vh}
 .app-topbar{height:56px;background:${C.surface};border-bottom:1px solid ${C.border};display:flex;align-items:center;padding:0 28px;gap:16px;position:sticky;top:0;z-index:40}
-.app-page-title{font-family:${FD};font-size:20px;font-weight:700;color:${C.white};flex:1}
+.app-page-title{font-family:${FD};font-size:19px;font-weight:500;color:${C.ink};flex:1}
 .app-body{padding:28px}
 
 /* DASHBOARD */
 .dash-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(176px,1fr));gap:16px;margin-bottom:24px}
 .stat-card{background:${C.surface};border:1px solid ${C.border};border-radius:12px;padding:20px 22px}
 .stat-card-label{font-size:11px;color:${C.muted};letter-spacing:1px;text-transform:uppercase;margin-bottom:8px}
-.stat-card-val{font-family:${FM};font-size:28px;color:${C.orange};font-weight:500}
+.stat-card-val{font-family:${FM};font-size:27px;color:${C.ink};font-weight:500}
 .stat-card-sub{font-size:12px;color:${C.muted};margin-top:4px}
 .dash-2col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .dash-panel{background:${C.surface};border:1px solid ${C.border};border-radius:12px;padding:22px}
@@ -314,34 +331,34 @@ input,textarea,select{font-family:${FB}}
 .fr-save.ok{border-color:${C.green};color:${C.green}}
 
 /* ADMIN */
-.admin-badge{background:${C.red}22;border:1px solid ${C.red}44;color:${C.red};font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;letter-spacing:1px;text-transform:uppercase}
+.admin-badge{background:${C.red}14;border:1px solid ${C.red}33;color:${C.redDim};font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;letter-spacing:1px;text-transform:uppercase}
 .data-table{width:100%;border-collapse:collapse;font-size:13px}
 .data-table th{background:${C.panel};color:${C.muted};font-size:11px;text-transform:uppercase;letter-spacing:1px;padding:10px 14px;text-align:left;border-bottom:1px solid ${C.border};white-space:nowrap}
-.data-table td{padding:11px 14px;border-bottom:1px solid ${C.border}33;vertical-align:middle}
-.data-table tr:hover td{background:${C.panel}44}
+.data-table td{padding:11px 14px;border-bottom:1px solid ${C.border};vertical-align:middle}
+.data-table tr:hover td{background:${C.panel}}
 .pill{display:inline-flex;align-items:center;padding:2px 10px;border-radius:100px;font-size:11px;font-weight:600}
-.pill-green{background:${C.green}22;color:${C.green}}
-.pill-orange{background:${C.orange}22;color:${C.orange}}
-.pill-muted{background:${C.muted}22;color:${C.muted}}
-.pill-red{background:${C.red}22;color:${C.red}}
-.pill-teal{background:${C.teal}22;color:${C.teal}}
+.pill-green{background:${C.green}14;color:${C.green}}
+.pill-orange{background:${C.red}14;color:${C.redDim}}
+.pill-muted{background:${C.muted}1f;color:${C.silver}}
+.pill-red{background:${C.red}14;color:${C.redDim}}
+.pill-teal{background:${C.teal}14;color:${C.tealDim}}
 
 /* SHARED */
-.section-title{font-family:${FD};font-size:22px;font-weight:700;color:${C.white};margin-bottom:4px}
+.section-title{font-family:${FD};font-size:22px;font-weight:500;color:${C.ink};margin-bottom:4px}
 .section-sub{font-size:13px;color:${C.muted};margin-bottom:20px}
 .card{background:${C.surface};border:1px solid ${C.border};border-radius:12px;padding:22px}
-.btn-teal{background:${C.teal};color:${C.base};border:none;padding:11px 24px;border-radius:8px;font-size:14px;font-weight:700;transition:background .15s}
-.btn-teal:hover{background:#00a99b}
+.btn-teal{background:${C.teal};color:#fff;border:none;padding:11px 24px;border-radius:8px;font-size:14px;font-weight:600;transition:background .15s}
+.btn-teal:hover{background:${C.tealDim}}
 .btn-teal:disabled{opacity:.6;cursor:not-allowed}
-.btn-orange{background:${C.orange};color:#fff;border:none;padding:11px 24px;border-radius:8px;font-size:14px;font-weight:700;transition:background .15s}
-.btn-orange:hover{background:#e85a1e}
+.btn-orange{background:${C.ink};color:${C.base};border:none;padding:11px 24px;border-radius:8px;font-size:14px;font-weight:600;transition:background .15s}
+.btn-orange:hover{background:${C.red}}
 .btn-orange:disabled{opacity:.6;cursor:not-allowed}
 .btn-sm-ghost{background:transparent;border:1px solid ${C.border};color:${C.silver};padding:6px 14px;font-size:12px;border-radius:6px;transition:all .15s}
-.btn-sm-ghost:hover{border-color:${C.silver};color:${C.white}}
-.btn-danger{background:${C.red}22;border:1px solid ${C.red}44;color:${C.red};padding:6px 14px;font-size:12px;border-radius:6px;transition:all .15s}
-.btn-danger:hover{background:${C.red}44}
-.notice{background:${C.teal}12;border:1px solid ${C.teal}33;border-radius:8px;padding:12px 16px;font-size:13px;color:${C.teal};margin-bottom:16px}
-.warn{background:${C.gold}12;border:1px solid ${C.gold}33;border-radius:8px;padding:12px 16px;font-size:13px;color:${C.gold};margin-bottom:16px}
+.btn-sm-ghost:hover{border-color:${C.silver};color:${C.ink}}
+.btn-danger{background:${C.red}14;border:1px solid ${C.red}33;color:${C.redDim};padding:6px 14px;font-size:12px;border-radius:6px;transition:all .15s}
+.btn-danger:hover{background:${C.red}28}
+.notice{background:${C.teal}0d;border:1px solid ${C.teal}33;border-radius:8px;padding:12px 16px;font-size:13px;color:${C.tealDim};margin-bottom:16px}
+.warn{background:${C.gold}0d;border:1px solid ${C.gold}40;border-radius:8px;padding:12px 16px;font-size:13px;color:${C.gold};margin-bottom:16px}
 .parse-status{display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:8px;font-size:13px;margin-top:12px}
 .parse-status.loading{background:${C.teal}18;border:1px solid ${C.teal}33;color:${C.teal}}
 .parse-status.success{background:${C.green}18;border:1px solid ${C.green}33;color:${C.green}}
@@ -355,9 +372,9 @@ input,textarea,select{font-family:${FB}}
 .table-wrap{overflow-x:auto}
 
 /* LOADING SCREEN */
-.loading-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px}
-.loading-logo{font-family:${FD};font-size:32px;font-weight:800;color:${C.white};letter-spacing:3px}
-.loading-logo span{color:${C.orange}}
+.loading-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;background:${C.base}}
+.loading-logo{font-family:${FD};font-size:30px;font-weight:500;color:${C.ink};font-style:italic}
+.loading-logo span{color:${C.red};font-style:normal;font-weight:700}
 .loading-sub{font-size:13px;color:${C.muted}}
 
 @media(max-width:768px){
@@ -435,7 +452,7 @@ async function aiParseRosterPdf(base64Pdf) {
 // ── AERODATA LOOKUP ───────────────────────────────────────────────────────────
 // Goes through our Edge Function, which holds the shared FlightAware key
 // server-side. No pilot needs to provide their own key anymore.
-async function lookupFlight(flightNum, date) {
+async function lookupFlight(flightNum, date, depTime) {
   if (!SUPA_URL || !SUPA_ANON) {
     throw new Error("Supabase is not configured.");
   }
@@ -446,7 +463,7 @@ async function lookupFlight(flightNum, date) {
       "Authorization": `Bearer ${SUPA_ANON}`,
       "apikey": SUPA_ANON,
     },
-    body: JSON.stringify({ flightNum, date }),
+    body: JSON.stringify({ flightNum, date, depTime }),
   });
   const data = await r.json();
   if (!r.ok) throw new Error(data.error || `Lookup failed (${r.status})`);
@@ -606,33 +623,47 @@ async function db_adminUpdateUser(userId, updates) {
 // ─────────────────────────────────────────────────────────────────────────────
 // LANDING PAGE
 // ─────────────────────────────────────────────────────────────────────────────
-function LandingPage({onLogin}) {
+function LandingPage({onLogin, onSignup}) {
   return (
     <div style={{background:C.base,minHeight:"100vh"}}>
       <nav className="lp-nav">
-        <div className="lp-logo">FLIGHT<span>LOG</span></div>
+        <div className="lp-logo">Flight<span>Log</span></div>
         <div className="lp-nav-links">
           <button className="lp-nav-link" onClick={()=>document.getElementById("features")?.scrollIntoView({behavior:"smooth"})}>Features</button>
           <button className="lp-nav-link" onClick={()=>document.getElementById("how")?.scrollIntoView({behavior:"smooth"})}>How it works</button>
           <button className="lp-nav-link" onClick={()=>document.getElementById("pricing")?.scrollIntoView({behavior:"smooth"})}>Pricing</button>
         </div>
-        <button className="lp-nav-cta" onClick={onLogin}>Log in →</button>
+        <div className="lp-nav-actions">
+          <button className="lp-nav-login" onClick={onLogin}>Log in</button>
+          <button className="lp-nav-cta" onClick={onSignup}>Sign up</button>
+        </div>
       </nav>
 
       <section className="lp-hero">
-        <div className="lp-hero-bg"/><div className="lp-hero-grid"/>
+        <div className="lp-hero-bg"/>
         <div className="lp-eyebrow"><div className="lp-eyebrow-dot"/>AI-powered · Any airline · Any format</div>
         <h1 className="lp-headline">Your logbook,<br/><em>automated.</em></h1>
         <p className="lp-sub">Upload your monthly PDF roster. FlightLog uses AI to read it, then pulls real-time block times and tail numbers — keeping your hours always current.</p>
         <div className="lp-hero-btns">
-          <button className="btn-primary" onClick={onLogin}>Start free →</button>
+          <button className="btn-primary" onClick={onSignup}>Start free →</button>
           <button className="btn-ghost" onClick={()=>document.getElementById("how")?.scrollIntoView({behavior:"smooth"})}>See how it works</button>
         </div>
-        <div className="tape-wrap"><div className="tape-fill"/><div className="tape-plane">✈</div></div>
-        <div style={{display:"flex",gap:48,marginTop:32,flexWrap:"wrap",justifyContent:"center"}}>
+        <div className="ledger">
+          <div className="ledger-line">
+            <div className="ledger-ticks">
+              {Array.from({length:25}).map((_,i)=>(
+                <div key={i} className={`ledger-tick ${i%6===0?"major":""}`}/>
+              ))}
+            </div>
+            <div className="ledger-fill"/>
+            <div className="ledger-marker"/>
+          </div>
+          <div className="ledger-caption"><span>0 HRS</span><span>LOGGED THIS MONTH</span><span>100 HRS</span></div>
+        </div>
+        <div style={{display:"flex",gap:48,marginTop:40,flexWrap:"wrap",justifyContent:"center"}}>
           {[["PDF upload","Drop your roster, done"],["AI reads it","Any airline format"],["Live data","Tail numbers auto-filled"]].map(([h,s])=>(
             <div key={h} style={{textAlign:"center"}}>
-              <div style={{fontSize:13,fontWeight:600,color:C.white,marginBottom:2}}>{h}</div>
+              <div style={{fontSize:13,fontWeight:600,color:C.ink,marginBottom:2}}>{h}</div>
               <div style={{fontSize:12,color:C.muted}}>{s}</div>
             </div>
           ))}
@@ -693,7 +724,7 @@ function LandingPage({onLogin}) {
             <div><span className="price-amount">$0</span><span className="price-period">/mo</span></div>
             <div className="price-desc">For pilots just getting started.</div>
             <ul className="price-features"><li>1 roster/month</li><li>Manual tail entry</li><li>CSV export</li><li>30-day history</li></ul>
-            <button className="price-cta price-cta-ghost" onClick={onLogin}>Get started free</button>
+            <button className="price-cta price-cta-ghost" onClick={onSignup}>Get started free</button>
           </div>
           <div className="price-card featured">
             <div className="price-badge">MOST POPULAR</div>
@@ -701,20 +732,20 @@ function LandingPage({onLogin}) {
             <div><span className="price-amount">$9</span><span className="price-period">/mo</span></div>
             <div className="price-desc">Fully automated logbook.</div>
             <ul className="price-features"><li>Unlimited rosters</li><li>AI parsing</li><li>Live tail # &amp; block time lookup</li><li>Full history</li><li>CSV export</li></ul>
-            <button className="price-cta price-cta-primary" onClick={onLogin}>Start Pro trial</button>
+            <button className="price-cta price-cta-primary" onClick={onSignup}>Start Pro trial</button>
           </div>
           <div className="price-card">
             <div className="price-plan">Enterprise</div>
             <div><span className="price-amount">$29</span><span className="price-period">/mo</span></div>
             <div className="price-desc">For chief pilots and ops teams.</div>
             <ul className="price-features"><li>Everything in Pro</li><li>Admin console</li><li>Team roster management</li><li>API access</li><li>Priority support</li></ul>
-            <button className="price-cta price-cta-ghost" onClick={onLogin}>Contact sales</button>
+            <button className="price-cta price-cta-ghost" onClick={onSignup}>Contact sales</button>
           </div>
         </div>
       </div></section>
 
       <footer className="lp-footer">
-        <div style={{fontFamily:FD,fontSize:20,fontWeight:800,color:C.white}}>FLIGHT<span style={{color:C.orange}}>LOG</span></div>
+        <div style={{fontFamily:FD,fontSize:18,fontWeight:500,fontStyle:"italic",color:C.ink}}>Flight<span style={{color:C.red,fontStyle:"normal",fontWeight:700}}>Log</span></div>
         <div style={{display:"flex",gap:24}}>
           {["Privacy","Terms","Support"].map(l=><span key={l} style={{fontSize:13,color:C.muted,cursor:"pointer"}}>{l}</span>)}
         </div>
@@ -727,8 +758,8 @@ function LandingPage({onLogin}) {
 // ─────────────────────────────────────────────────────────────────────────────
 // AUTH PAGE
 // ─────────────────────────────────────────────────────────────────────────────
-function AuthPage({onAuth, onBack}) {
-  const [mode,setMode]=useState("login");
+function AuthPage({onAuth, onBack, initialMode="login"}) {
+  const [mode,setMode]=useState(initialMode);
   const [email,setEmail]=useState(""); const [password,setPassword]=useState("");
   const [name,setName]=useState(""); const [plan,setPlan]=useState("pro");
   const [err,setErr]=useState(""); const [loading,setLoading]=useState(false);
@@ -752,7 +783,7 @@ function AuthPage({onAuth, onBack}) {
   return (
     <div className="auth-wrap" style={{background:C.base}}>
       <div className="auth-card">
-        <div className="auth-logo">FLIGHT<span>LOG</span></div>
+        <div className="auth-logo">Flight<span>Log</span></div>
         <div className="auth-tagline">Your automated pilot logbook</div>
 
         {!configured && (
@@ -826,7 +857,7 @@ function Sidebar({user,page,setPage,onLogout}) {
   return (
     <div className="sidebar">
       <div className="sidebar-logo">
-        <div className="sidebar-logo-text">FLIGHT<span>LOG</span></div>
+        <div className="sidebar-logo-text">Flight<span>Log</span></div>
         <div className="sidebar-plan">{isAdmin?"Admin Console":user.plan+" plan"}</div>
       </div>
       <nav className="sidebar-nav">
@@ -979,7 +1010,7 @@ function UploadPage({user, onRosterSaved}) {
             <><span className="upload-icon">📄</span>
               <h3>Drop your PDF roster here</h3>
               <p style={{marginBottom:20}}>or click to browse</p>
-              <div style={{background:C.orange,color:"#fff",padding:"12px 32px",borderRadius:8,fontSize:15,fontWeight:700,display:"inline-block",pointerEvents:"none"}}>
+              <div style={{background:C.ink,color:C.base,padding:"12px 32px",borderRadius:8,fontSize:15,fontWeight:600,display:"inline-block",pointerEvents:"none"}}>
                 📂 Choose PDF File
               </div></>
           )}
@@ -1033,7 +1064,7 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
     setLkStatus(p=>({...p,[tk]:"loading"}));
     try {
       const date=`${roster.year}-${String(roster.monthNum+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
-      const res=await lookupFlight(f.flightNum,date);
+      const res=await lookupFlight(f.flightNum,date,f.depTime);
       setLkStatus(p=>({...p,[tk]:res.tailNumber?"done":"notfound"}));
       if(res.tailNumber) {
         setTmp(p=>({...p,[tk]:res.tailNumber}));
@@ -1444,6 +1475,7 @@ function AdminSettings() {
 // ─────────────────────────────────────────────────────────────────────────────
 export default function App() {
   const [screen,setScreen]=useState("loading");
+  const [authMode,setAuthMode]=useState("login");
   const [user,setUser]=useState(null);
   const [page,setPage]=useState("dashboard");
   const [rosters,setRosters]=useState([]);
@@ -1505,12 +1537,12 @@ export default function App() {
       <style>{STYLES}</style>
       {screen==="loading"&&(
         <div className="loading-screen">
-          <div className="loading-logo">FLIGHT<span>LOG</span></div>
+          <div className="loading-logo">Flight<span>Log</span></div>
           <div className="loading-sub"><span className="spinner">⟳</span> Loading…</div>
         </div>
       )}
-      {screen==="landing"&&<LandingPage onLogin={()=>setScreen("auth")}/>}
-      {screen==="auth"&&<AuthPage onAuth={handleAuth} onBack={()=>setScreen("landing")}/>}
+      {screen==="landing"&&<LandingPage onLogin={()=>{setAuthMode("login");setScreen("auth");}} onSignup={()=>{setAuthMode("signup");setScreen("auth");}}/>}
+      {screen==="auth"&&<AuthPage onAuth={handleAuth} onBack={()=>setScreen("landing")} initialMode={authMode}/>}
       {screen==="app"&&user&&(
         <div className="app-shell">
           <Sidebar user={user} page={page} setPage={setPage} onLogout={handleLogout}/>
