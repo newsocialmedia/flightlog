@@ -382,27 +382,25 @@ function csvExport(rosters, tails) {
   return rows.map(r=>r.join(",")).join("\n");
 }
 
-// ── PDF EXTRACTION ────────────────────────────────────────────────────────────
-async function extractPdfText(file) {
-  if (!window.pdfjsLib) {
-    await new Promise((res,rej)=>{ const s=document.createElement("script"); s.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"; s.onload=res; s.onerror=rej; document.head.appendChild(s); });
-    window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+// ── PDF → BASE64 ──────────────────────────────────────────────────────────────
+// Instead of extracting text positionally (which scrambles complex roster
+// grids/tables), we send the raw PDF bytes to Claude, which reads the
+// document visually — far more reliable for dense calendar-style layouts.
+async function fileToBase64(file) {
+  const buf = await file.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
   }
-  const pdf = await window.pdfjsLib.getDocument({data: await file.arrayBuffer()}).promise;
-  let out="";
-  for(let i=1;i<=pdf.numPages;i++){
-    const pg=await pdf.getPage(i), ct=await pg.getTextContent(), lines={};
-    for(const it of ct.items){ const y=Math.round(it.transform[5]); (lines[y]=lines[y]||[]).push({x:it.transform[4],t:it.str}); }
-    Object.keys(lines).map(Number).sort((a,b)=>b-a).forEach(y=>{ out+=lines[y].sort((a,b)=>a.x-b.x).map(i=>i.t).join(" ")+"\n"; });
-    out+="\n";
-  }
-  return out;
+  return btoa(binary);
 }
 
-// ── AI ROSTER PARSER ──────────────────────────────────────────────────────────
-// Calls our Supabase Edge Function instead of Anthropic directly.
-// This keeps the API key server-side and avoids browser CORS restrictions.
-async function aiParseRoster(text) {
+// ── AI ROSTER PARSER (native PDF) ───────────────────────────────────────────
+// Sends the PDF directly to our Supabase Edge Function, which forwards it
+// to Claude as a document for visual extraction.
+async function aiParseRosterPdf(base64Pdf) {
   if (!SUPA_URL || !SUPA_ANON) {
     throw new Error("Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
   }
@@ -413,7 +411,7 @@ async function aiParseRoster(text) {
       "Authorization": `Bearer ${SUPA_ANON}`,
       "apikey": SUPA_ANON,
     },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ pdfBase64: base64Pdf }),
   });
   const data = await res.json();
   if (!res.ok) {
@@ -903,16 +901,11 @@ function UploadPage({user, onRosterSaved}) {
     if(!file.name.toLowerCase().endsWith(".pdf")&&file.type!=="application/pdf") {
       setStatus("error"); setMsg("Please upload a PDF file."); return;
     }
-    setFileName(file.name); setPreview(""); setStatus("loading"); setMsg("Reading PDF…");
-    let text="";
+    setFileName(file.name); setPreview(""); setStatus("loading"); setMsg("Reading roster with AI…");
     try {
-      text=await extractPdfText(file);
-      if(!text.trim()) throw new Error("Could not extract text. The PDF may be image-only or scanned.");
-      setPreview(text.slice(0,300).trim());
-      setMsg("AI is parsing your roster…");
-    } catch(e) { setStatus("error"); setMsg(e.message); return; }
-    try {
-      const roster=await aiParseRoster(text);
+      const base64 = await fileToBase64(file);
+      setMsg("AI is reading your roster…");
+      const roster = await aiParseRosterPdf(base64);
       if(!roster.calendar?.some(d=>d.flights.length>0)) throw new Error("No flights found. Is this a crew duty roster?");
       const saved=await db_saveRoster(user.id, roster);
       setStatus("success");
@@ -953,12 +946,6 @@ function UploadPage({user, onRosterSaved}) {
               </div></>
           )}
         </div>
-        {preview&&(
-          <div style={{marginTop:16,background:C.panel,borderRadius:8,padding:14,border:`1px solid ${C.border}`}}>
-            <div style={{fontSize:11,color:C.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:6}}>Extracted text preview</div>
-            <div style={{fontFamily:FM,fontSize:11,color:C.silver,lineHeight:1.6,whiteSpace:"pre-wrap",maxHeight:90,overflow:"hidden",opacity:.8}}>{preview}…</div>
-          </div>
-        )}
         {status&&status!=="loading"&&(
           <div className={`parse-status ${status}`}>{msg}</div>
         )}
