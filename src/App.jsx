@@ -291,10 +291,10 @@ input,textarea,select{font-family:${FB}}
 .day-summary-text{flex:1;font-size:13px;color:${C.silver}}
 .day-ft{font-family:${FM};font-size:12px;color:${C.muted}}
 .day-body{padding:12px 16px;display:flex;flex-direction:column;gap:10px;border-top:1px solid ${C.border}44}
-.col-heads-2row{display:grid;grid-template-columns:80px 46px 46px 110px 110px 64px 56px;gap:6px;padding:0 4px}
+.col-heads-2row{display:grid;grid-template-columns:84px 48px 48px 120px 70px 60px;gap:6px;padding:0 4px}
 .col-head{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:${C.muted}}
 .flight-row-2line{background:${C.panel};border-radius:8px;padding:8px 12px;display:flex;flex-direction:column;gap:8px}
-.flight-row-top{display:grid;grid-template-columns:80px 46px 46px 110px 110px 64px 56px;gap:6px;align-items:center}
+.flight-row-top{display:grid;grid-template-columns:84px 48px 48px 120px 70px 60px;gap:6px;align-items:center}
 .flight-row-bottom{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding-top:6px;border-top:1px solid ${C.border}33}
 .fr-num{font-family:${FM};font-size:12px;color:${C.orange}}
 .fr-apt{font-size:13px;font-weight:600;color:${C.white}}
@@ -364,7 +364,7 @@ input,textarea,select{font-family:${FB}}
   .sidebar{display:none}
   .app-content{margin-left:0}
   .dash-2col{grid-template-columns:1fr}
-  .col-heads-2row,.flight-row-top{grid-template-columns:64px 38px 38px 1fr 1fr 50px 40px}
+  .col-heads-2row,.flight-row-top{grid-template-columns:64px 38px 38px 1fr 50px 40px}
   .lp-nav{padding:0 16px}
   .lp-section{padding:60px 16px}
 }
@@ -1132,7 +1132,7 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
             {expanded&&d.flights.length>0&&(
               <div className="day-body">
                 <div className="col-heads-2row">
-                  {["Flight","Dep","Arr","Sched Times","Actual Times","Block Hr","Type"].map((h,i)=><div key={i} className="col-head">{h}</div>)}
+                  {["Flight","Dep","Arr","Times","Block Hr","Type"].map((h,i)=><div key={i} className="col-head">{h}</div>)}
                 </div>
                 {d.flights.map((f,fi)=>{
                   const tk=tkey(di,fi);
@@ -1155,7 +1155,6 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
                         <div className="fr-num">{f.flightNum}</div>
                         <div className="fr-apt">{f.dep}</div>
                         <div className="fr-apt">{f.arr}</div>
-                        <div className="fr-time">{f.depTime}–{f.arrTime}</div>
                         {isEditing ? (
                           <div className="fr-time-edit">
                             <input className="fr-time-input" placeholder="HH:MM" value={editVals.actualDep}
@@ -1164,9 +1163,16 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
                             <input className="fr-time-input" placeholder="HH:MM" value={editVals.actualArr}
                               onChange={e=>setTimeEdits(p=>({...p,[tk]:{...editVals,actualArr:e.target.value}}))}/>
                           </div>
+                        ) : hasActual ? (
+                          // Once actual times are known, they replace the scheduled
+                          // estimate in this slot — actual is what really happened,
+                          // scheduled was only ever a plan.
+                          <div className="fr-time" style={{color:C.teal}} title="Actual times (synced)">
+                            {entry.actualDep}–{entry.actualArr}
+                          </div>
                         ) : (
-                          <div className="fr-time" style={{color:hasActual?C.teal:C.muted}}>
-                            {hasActual ? `${entry.actualDep}–${entry.actualArr}` : "—"}
+                          <div className="fr-time" title="Scheduled times (from roster)">
+                            {f.depTime}–{f.arrTime}
                           </div>
                         )}
                         {isEditing ? (
