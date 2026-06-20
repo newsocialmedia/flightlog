@@ -373,7 +373,13 @@ input,textarea,select{font-family:${FB}}
 // ── UTILITIES ─────────────────────────────────────────────────────────────────
 const fmtMins = m => !m||isNaN(m) ? "0:00" : `${Math.floor(m/60)}:${String(m%60).padStart(2,"0")}`;
 const flightMins = (dep,arr) => { const [dh,dm]=dep.split(":").map(Number),[ah,am]=arr.split(":").map(Number); let x=(ah*60+am)-(dh*60+dm); return x<0?x+1440:x; };
-const rosterMins = r => r?.calendar?.reduce((a,d)=>a+d.flights.reduce((b,f)=>b+flightMins(f.depTime,f.arrTime),0),0)??0;
+// Prefer the block time stated directly in the roster (schedBlockMins, extracted
+// by the AI parser) since naive local-time subtraction is wrong whenever a flight
+// crosses timezones. Falls back to the naive calculation only if the roster didn't
+// state a per-leg figure, in which case the value may be off for cross-timezone legs.
+const schedMins = (f) => f.schedBlockMins!=null ? f.schedBlockMins : flightMins(f.depTime,f.arrTime);
+const schedMinsIsEstimate = (f) => f.schedBlockMins==null;
+const rosterMins = r => r?.calendar?.reduce((a,d)=>a+d.flights.reduce((b,f)=>b+schedMins(f),0),0)??0;
 const allFlights = rs => (rs||[]).flatMap(r=>(r.calendar||[]).flatMap(d=>d.flights.map(f=>({...f,date:d.day,dow:d.dow,period:r.periodLabel,rosterId:r.id}))));
 const initials = name => name?.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase()||"?";
 
@@ -382,8 +388,10 @@ function csvExport(rosters, tails) {
   (rosters||[]).forEach(r=>(r.calendar||[]).forEach((d,di)=>d.flights.forEach((f,fi)=>{
     const k=`${r.id}-${di}-${fi}`;
     const t=tails[k]||{};
-    const hasActual=t.actualDep&&t.actualArr;
-    rows.push([d.day,d.dow,f.flightNum,f.dep,f.depTime,t.actualDep||"",f.arr,f.arrTime,t.actualArr||"",f.acType,t.tail||"",fmtMins(flightMins(f.depTime,f.arrTime)),hasActual?fmtMins(flightMins(t.actualDep,t.actualArr)):"",r.periodLabel]);
+    const actualBlock = t.actualBlockMins!=null
+      ? fmtMins(t.actualBlockMins)
+      : (t.actualDep&&t.actualArr ? fmtMins(flightMins(t.actualDep,t.actualArr)) : "");
+    rows.push([d.day,d.dow,f.flightNum,f.dep,f.depTime,t.actualDep||"",f.arr,f.arrTime,t.actualArr||"",f.acType,t.tail||"",fmtMins(schedMins(f)),actualBlock,r.periodLabel]);
   })));
   return rows.map(r=>r.join(",")).join("\n");
 }
@@ -546,6 +554,7 @@ async function db_loadTails(userId) {
         tail: r.tail_number,
         actualDep: r.actual_dep_time || "",
         actualArr: r.actual_arr_time || "",
+        actualBlockMins: r.actual_block_mins ?? null,
       };
     });
     return map;
@@ -553,18 +562,19 @@ async function db_loadTails(userId) {
   return local.get("fl_tails_"+userId)||{};
 }
 
-async function db_saveTail(userId, rosterId, flightKey, tail, actualDep="", actualArr="") {
+async function db_saveTail(userId, rosterId, flightKey, tail, actualDep="", actualArr="", actualBlockMins=null) {
   if(isConfigured()) {
     await sb.from("tail_logs").upsert({
       user_id:userId, roster_id:rosterId, flight_key:flightKey,
       tail_number:tail,
       actual_dep_time: actualDep || null,
       actual_arr_time: actualArr || null,
+      actual_block_mins: actualBlockMins ?? null,
     });
     return;
   }
   const map = local.get("fl_tails_"+userId)||{};
-  map[`${rosterId}-${flightKey}`]={tail, actualDep, actualArr};
+  map[`${rosterId}-${flightKey}`]={tail, actualDep, actualArr, actualBlockMins};
   local.set("fl_tails_"+userId, map);
 }
 
@@ -885,7 +895,7 @@ function Dashboard({user,rosters,tails,setPage}) {
                 <div className="recent-flight" key={i}>
                   <div className="rf-num">{f.flightNum}</div>
                   <div className="rf-route">{f.dep} → {f.arr}</div>
-                  <div className="rf-time">{fmtMins(flightMins(f.depTime,f.arrTime))}</div>
+                  <div className="rf-time">{fmtMins(schedMins(f))}</div>
                   {t?.tail&&<div className="rf-tail">{t.tail}</div>}
                 </div>
               );
@@ -981,6 +991,7 @@ function UploadPage({user, onRosterSaved}) {
         )}
       </div>
       <div className="notice">⚡ Tail numbers are filled in automatically once each flight lands — no setup needed. You can also tap 🔍 on any flight to look it up instantly.</div>
+      <div className="warn">🌐 Scheduled block time uses the duration printed in your roster when available. If your roster only lists local clock times for a cross-timezone flight, the duration shown is estimated and marked with *. Actual (post-flight) block time is always calculated correctly across timezones.</div>
     </div>
   );
 }
@@ -1014,8 +1025,8 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
     const val=(tmp[tk]??"").trim().toUpperCase();
     const existing=tails[tk]||{};
     setSaving(p=>({...p,[tk]:true}));
-    await db_saveTail(user.id, roster.id, k, val, existing.actualDep, existing.actualArr);
-    onTailSaved(tk, {tail:val, actualDep:existing.actualDep||"", actualArr:existing.actualArr||""});
+    await db_saveTail(user.id, roster.id, k, val, existing.actualDep, existing.actualArr, existing.actualBlockMins);
+    onTailSaved(tk, {tail:val, actualDep:existing.actualDep||"", actualArr:existing.actualArr||"", actualBlockMins:existing.actualBlockMins??null});
     setSaving(p=>({...p,[tk]:false}));
   }
 
@@ -1031,8 +1042,9 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
         const existing=tails[tk]||{};
         const newDep=res.actualDepTime||existing.actualDep||"";
         const newArr=res.actualArrTime||existing.actualArr||"";
-        await db_saveTail(user.id,roster.id,fkey(di,fi),res.tailNumber,newDep,newArr);
-        onTailSaved(tk,{tail:res.tailNumber, actualDep:newDep, actualArr:newArr});
+        const newBlockMins=res.actualBlockMins ?? existing.actualBlockMins ?? null;
+        await db_saveTail(user.id,roster.id,fkey(di,fi),res.tailNumber,newDep,newArr,newBlockMins);
+        onTailSaved(tk,{tail:res.tailNumber, actualDep:newDep, actualArr:newArr, actualBlockMins:newBlockMins});
       }
     } catch { setLkStatus(p=>({...p,[tk]:"error"})); }
   }
@@ -1040,12 +1052,25 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
   function startEditTimes(di,fi) {
     const tk=tkey(di,fi);
     const entry=tails[tk]||{};
-    setTimeEdits(p=>({...p,[tk]:{actualDep:entry.actualDep||"",actualArr:entry.actualArr||""}}));
+    const currentBlock = entry.actualBlockMins!=null ? fmtMins(entry.actualBlockMins)
+      : (entry.actualDep&&entry.actualArr ? fmtMins(flightMins(entry.actualDep,entry.actualArr)) : "");
+    setTimeEdits(p=>({...p,[tk]:{actualDep:entry.actualDep||"",actualArr:entry.actualArr||"",blockHr:currentBlock}}));
     setEditingTimes(p=>({...p,[tk]:true}));
   }
 
   function cancelEditTimes(tk) {
     setEditingTimes(p=>({...p,[tk]:false}));
+  }
+
+  function parseBlockHrToMins(str) {
+    // Accepts "1:30" or "1.5" style input, returns minutes or null
+    const s=(str||"").trim();
+    if(!s) return null;
+    const colonMatch=s.match(/^(\d{1,2}):(\d{2})$/);
+    if(colonMatch) return parseInt(colonMatch[1])*60+parseInt(colonMatch[2]);
+    const num=parseFloat(s);
+    if(!isNaN(num)) return Math.round(num*60);
+    return null;
   }
 
   async function saveTimes(di,fi) {
@@ -1054,9 +1079,12 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
     const existing=tails[tk]||{};
     const dep=(edit.actualDep||"").trim();
     const arr=(edit.actualArr||"").trim();
+    // Manually entered block hour takes precedence (timezone-correct since the
+    // pilot enters the real duration directly, not derived from two clock times)
+    const manualBlockMins = parseBlockHrToMins(edit.blockHr);
     setSaving(p=>({...p,[tk]:true}));
-    await db_saveTail(user.id, roster.id, k, existing.tail||"", dep, arr);
-    onTailSaved(tk, {tail:existing.tail||"", actualDep:dep, actualArr:arr});
+    await db_saveTail(user.id, roster.id, k, existing.tail||"", dep, arr, manualBlockMins);
+    onTailSaved(tk, {tail:existing.tail||"", actualDep:dep, actualArr:arr, actualBlockMins:manualBlockMins});
     setSaving(p=>({...p,[tk]:false}));
     setEditingTimes(p=>({...p,[tk]:false}));
   }
@@ -1088,7 +1116,7 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
         const someSaved=d.flights.some((_,fi)=>tails[tkey(di,fi)]?.tail);
         const dotCls=allSaved?"all":someSaved?"partial":"";
         const expanded=exp[di]??(isToday&&d.flights.length>0);
-        const ft=d.flights.reduce((a,f)=>a+flightMins(f.depTime,f.arrTime),0);
+        const ft=d.flights.reduce((a,f)=>a+schedMins(f),0);
         return (
           <div key={di} className={`day-card ${isToday?"today-card":""} ${allSaved?"logged-card":""}`}>
             <div className="day-card-header" onClick={()=>d.flights.length>0&&setExp(p=>({...p,[di]:!expanded}))}>
@@ -1099,7 +1127,7 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
                   ? <span style={{color:C.muted,fontStyle:"italic",fontSize:12}}>Off</span>
                   : d.flights.map(f=>`${f.dep}→${f.arr}`).join(" · ")}
               </div>
-              {ft>0&&<div className="day-ft">{fmtMins(ft)}</div>}
+              {ft>0&&<div className="day-ft" title={d.flights.some(schedMinsIsEstimate)?"Estimated from local clock times — may be inaccurate across timezones":"From roster-stated block time"}>{fmtMins(ft)}{d.flights.some(schedMinsIsEstimate)&&<span style={{color:C.gold}}>*</span>}</div>}
               {d.flights.length>0&&<span style={{color:C.muted,fontSize:11,marginLeft:6}}>{expanded?"▲":"▼"}</span>}
             </div>
             {expanded&&d.flights.length>0&&(
@@ -1114,9 +1142,14 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
                   const tv=tmp[tk]??entry.tail??"";
                   const ls=lkStatus[tk];
                   const hasActual=entry.actualDep&&entry.actualArr;
-                  const actualBlock=hasActual?fmtMins(flightMins(entry.actualDep,entry.actualArr)):null;
+                  // Use the server-computed, timezone-correct duration when available
+                  // (calculated from UTC timestamps). Only fall back to naive local-time
+                  // subtraction if no server value exists yet (e.g. legacy data).
+                  const actualBlock = entry.actualBlockMins!=null
+                    ? fmtMins(entry.actualBlockMins)
+                    : (hasActual ? fmtMins(flightMins(entry.actualDep,entry.actualArr)) : null);
                   const isEditing=editingTimes[tk];
-                  const editVals=timeEdits[tk]||{actualDep:"",actualArr:""};
+                  const editVals=timeEdits[tk]||{actualDep:"",actualArr:"",blockHr:""};
                   return (
                     <div key={fi} className="flight-row-2line">
                       <div className="flight-row-top">
@@ -1137,9 +1170,14 @@ function LogbookPage({user, rosters, tails, onTailSaved, onDeleteRoster}) {
                             {hasActual ? `${entry.actualDep}–${entry.actualArr}` : "—"}
                           </div>
                         )}
-                        <div className="fr-time" style={{color:actualBlock?C.teal:C.muted,fontWeight:actualBlock?600:400}}>
-                          {actualBlock || "—"}
-                        </div>
+                        {isEditing ? (
+                          <input className="fr-time-input" style={{width:56}} placeholder="1:30" value={editVals.blockHr}
+                            onChange={e=>setTimeEdits(p=>({...p,[tk]:{...editVals,blockHr:e.target.value}}))}/>
+                        ) : (
+                          <div className="fr-time" style={{color:actualBlock?C.teal:C.muted,fontWeight:actualBlock?600:400}}>
+                            {actualBlock || "—"}
+                          </div>
+                        )}
                         <div className="fr-ac">{f.acType}</div>
                       </div>
                       <div className="flight-row-bottom">
