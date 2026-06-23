@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <title>FlightLog — Pilot Logbook</title>
+    <meta name="description" content="Automated pilot logbook — upload your roster, AI reads it, tail numbers and block times sync automatically." />
+    <meta name="application-name" content="FlightLog" />
+    <meta name="author" content="FlightLog" />
+
+    <!-- PWA manifest -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#090E1A" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- iOS PWA support -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="FlightLog" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="512x512" href="/icons/icon-512.png" />
+
+    <!-- Splash screen background for iOS -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+
+    <!-- Android/Chrome -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png" />
+    <link rel="shortcut icon" href="/icons/icon-192.png" />
+
+    <!-- Prevent phone-number detection -->
+    <meta name="format-detection" content="telephone=no" />
+
+    <!-- Microsoft tiles (helps PWABuilder) -->
+    <meta name="msapplication-TileColor" content="#090E1A" />
+    <meta name="msapplication-TileImage" content="/icons/icon-512.png" />
+    <meta name="msapplication-config" content="none" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+
+    <!-- Register service worker -->
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("/service-worker.js").catch((err) => {
+            console.warn("Service worker registration failed:", err);
+          });
+        });
+      }
+    </script>
+  </body>
+</html>
