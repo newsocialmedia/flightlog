@@ -56,6 +56,7 @@ function buildIdents(flightNum) {
 }
 
 module.exports = async function handler(req, res) {
+  console.log("[lookup-flight] called:", req.method, JSON.stringify(req.body));
   // Always return JSON even on unexpected crash
   try {
   // CORS headers
@@ -89,13 +90,19 @@ module.exports = async function handler(req, res) {
     const url = `https://aeroapi.flightaware.com/aeroapi/flights/${tryIdent}?start=${date}&end=${endStr}`;
     let faRes;
     try {
-      faRes = await fetch(url, {
-        headers: {
-          "x-apikey": FLIGHTAWARE_API_KEY,
-          "Accept": "application/json",
-        },
-        signal: AbortSignal.timeout(12000),
-      });
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 12000);
+      try {
+        faRes = await fetch(url, {
+          headers: {
+            "x-apikey": FLIGHTAWARE_API_KEY,
+            "Accept": "application/json",
+          },
+          signal: ctrl.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
     } catch(e) {
       console.error(`[lookup-flight] fetch error for ${tryIdent}:`, e.message);
       continue;
