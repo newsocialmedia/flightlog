@@ -1,184 +1,102 @@
-// Vercel Serverless Function — api/lookup-flight.js
-// Proxies FlightAware AeroAPI calls server-side so the API key
-// is never exposed to the browser.
-// Deploy by placing this file at /api/lookup-flight.js in your repo root.
-// Add FLIGHTAWARE_API_KEY to Vercel Environment Variables.
-
-const IATA_TO_ICAO = {
-  "G7":"GJS","OO":"SKW","YX":"RPA","9E":"EDV","MQ":"ENY",
-  "OH":"JIA","YV":"ASH","UA":"UAL","AA":"AAL","DL":"DAL",
-  "WN":"SWA","B6":"JBU","AS":"ASA","F9":"FFT","NK":"NKS",
-  "HA":"HAL","G4":"GGN","SY":"SCX",
-};
-
-const TZ_OFFSETS = {
-  "America/New_York":-5,"America/Detroit":-5,"America/Toronto":-5,
-  "America/Indiana/Indianapolis":-5,"America/Kentucky/Louisville":-5,
-  "America/Chicago":-6,"America/Winnipeg":-6,
-  "America/Denver":-7,"America/Phoenix":-7,"America/Edmonton":-7,
-  "America/Los_Angeles":-8,"America/Vancouver":-8,
-  "America/Anchorage":-9,"Pacific/Honolulu":-10,
-  "Europe/London":0,"Europe/Paris":1,"Europe/Berlin":1,
-  "Asia/Tokyo":9,"Asia/Seoul":9,"Asia/Shanghai":8,
-  "Australia/Sydney":10,"Pacific/Auckland":12,
-};
-
-function tzOffMs(tz) {
-  return (TZ_OFFSETS[tz] || 0) * 3600000;
-}
-
-function utcToLocal(iso, tz) {
-  if(!iso) return "";
-  const ms = new Date(iso).getTime() + tzOffMs(tz);
-  const d = new Date(ms);
-  return String(d.getUTCHours()).padStart(2,"0")+":"+String(d.getUTCMinutes()).padStart(2,"0");
-}
-
-function parseFlightNum(flightNum) {
-  const s = flightNum.trim().toUpperCase();
-  const m = s.match(/^([A-Z]{2,3}|[A-Z][0-9])\s*([0-9]+)$/);
-  if(!m) return { carrier: s, num: "" };
-  return { carrier: m[1], num: m[2] };
-}
-
-function buildIdents(flightNum) {
-  const { carrier, num } = parseFlightNum(flightNum);
-  if(!num) return [flightNum.trim().toUpperCase()];
-  const icao = IATA_TO_ICAO[carrier] || carrier;
-  const idents = new Set();
-  idents.add(icao + num);
-  idents.add(carrier + num);
-  if(carrier === "G7" || icao === "GJS") {
-    idents.add("GJS" + num);
-    idents.add("UAL" + num);
-  }
-  return [...idents];
-}
-
 module.exports = async function handler(req, res) {
-  console.log("[lookup-flight] called:", req.method, JSON.stringify(req.body));
-  // Always return JSON even on unexpected crash
-  try {
-  // CORS headers
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, apikey");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
   if(req.method === "OPTIONS") return res.status(200).end();
-  if(req.method !== "POST") return res.status(405).json({error:"Method not allowed"});
 
   const FLIGHTAWARE_API_KEY = process.env.FLIGHTAWARE_API_KEY;
   if(!FLIGHTAWARE_API_KEY) {
-    return res.status(500).json({error:"FLIGHTAWARE_API_KEY not configured in Vercel environment variables"});
+    return res.status(500).json({ error: "FLIGHTAWARE_API_KEY not set in Vercel env vars" });
   }
 
-  const { flightNum, date, depTime } = req.body || {};
+  let body = {};
+  try { body = req.body || {}; } catch(e) {}
+
+  const { flightNum = "", date = "", depTime = "" } = body;
   if(!flightNum || !date) {
-    return res.status(400).json({error:"Missing flightNum or date"});
+    return res.status(400).json({ error: "Missing flightNum or date", received: body });
   }
 
-  const identsToTry = buildIdents(flightNum);
+  // IATA to ICAO
+  const MAP = {"G7":"GJS","OO":"SKW","YX":"RPA","9E":"EDV","UA":"UAL","AA":"AAL","DL":"DAL","WN":"SWA","B6":"JBU","AS":"ASA"};
+  const s = flightNum.trim().toUpperCase();
+  const m = s.match(/^([A-Z]{2,3}|[A-Z]\d)\s*(\d+)$/);
+  const carrier = m ? m[1] : "";
+  const num = m ? m[2] : "";
+  const icao = (carrier && MAP[carrier]) ? MAP[carrier] : carrier;
+  const ident = icao + num;
 
-  const end = new Date(date+"T00:00:00Z");
-  end.setUTCDate(end.getUTCDate()+2);
-  const endStr = end.toISOString().slice(0,10);
+  const identsToTry = [...new Set([ident, carrier+num, "GJS"+num, "UAL"+num].filter(x=>x&&x.length>2))];
 
-  let best = null;
-  let usedIdent = ident;
+  const endDate = new Date(date+"T00:00:00Z");
+  endDate.setUTCDate(endDate.getUTCDate()+2);
+  const endStr = endDate.toISOString().slice(0,10);
 
+  let lastError = "";
   for(const tryIdent of identsToTry) {
-    const url = `https://aeroapi.flightaware.com/aeroapi/flights/${tryIdent}?start=${date}&end=${endStr}`;
     let faRes;
     try {
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 12000);
-      try {
-        faRes = await fetch(url, {
-          headers: {
-            "x-apikey": FLIGHTAWARE_API_KEY,
-            "Accept": "application/json",
-          },
-          signal: ctrl.signal,
-        });
-      } finally {
-        clearTimeout(timer);
-      }
+      const t = setTimeout(() => ctrl.abort(), 12000);
+      faRes = await fetch(
+        `https://aeroapi.flightaware.com/aeroapi/flights/${tryIdent}?start=${date}&end=${endStr}`,
+        { headers: {"x-apikey": FLIGHTAWARE_API_KEY, "Accept": "application/json"}, signal: ctrl.signal }
+      );
+      clearTimeout(t);
     } catch(e) {
-      console.error(`[lookup-flight] fetch error for ${tryIdent}:`, e.message);
+      lastError = `fetch error: ${e.message}`;
       continue;
     }
 
     if(!faRes.ok) {
-      console.error(`[lookup-flight] FA error ${faRes.status} for ${tryIdent}`);
-      // 401/403 = auth issue — no point trying other idents
-      if(faRes.status === 401 || faRes.status === 403) {
-        const txt = await faRes.text();
-        return res.status(502).json({error:`FlightAware auth error ${faRes.status}`, detail: txt.slice(0,200)});
+      const txt = await faRes.text().catch(()=>"");
+      lastError = `FA ${faRes.status}: ${txt.slice(0,200)}`;
+      if(faRes.status===401||faRes.status===403) {
+        return res.status(200).json({ error: lastError, tailNumber:"", actualDepTime:"", actualArrTime:"", actualBlockMins:null });
       }
       continue;
     }
 
-    const data = await faRes.json();
+    let data;
+    try { data = await faRes.json(); } catch(e) { lastError="bad json"; continue; }
+
     const flights = data?.flights || [];
-    if(!flights.length) continue;
+    if(!flights.length) { lastError=`no flights for ${tryIdent}`; continue; }
 
-    // Prefer flights with actual times
-    const withActual = flights.filter(f => f.actual_out||f.actual_off||f.actual_in||f.actual_on);
-    const pool = withActual.length ? withActual : flights;
+    const pool = flights.filter(f=>f.actual_out||f.actual_off||f.actual_in||f.actual_on);
+    const best = pool.length ? pool[0] : flights[0];
 
-    best = pool[0];
-    usedIdent = tryIdent;
-
-    // Match by departure time if multiple candidates
-    if(pool.length > 1 && depTime) {
-      const tz = pool[0]?.origin?.timezone || "America/Chicago";
-      const offMs = tzOffMs(tz);
-      const [dh,dm] = depTime.split(":").map(Number);
-      const [y,mo,dy] = date.split("-").map(Number);
-      const targetUtc = Date.UTC(y,mo-1,dy,dh,dm) - offMs;
-      let bestDiff = Infinity;
-      for(const f of pool) {
-        const s = f.scheduled_out || f.scheduled_off;
-        if(!s) continue;
-        const diff = Math.abs(new Date(s).getTime() - targetUtc);
-        if(diff < bestDiff) { bestDiff = diff; best = f; }
-      }
+    const TZ = {"America/New_York":-5,"America/Chicago":-6,"America/Denver":-7,"America/Los_Angeles":-8,"America/Phoenix":-7,"America/Anchorage":-9};
+    function toLocal(iso, tz) {
+      if(!iso) return "";
+      const off = (TZ[tz]||0)*3600000;
+      const d = new Date(new Date(iso).getTime()+off);
+      return String(d.getUTCHours()).padStart(2,"0")+":"+String(d.getUTCMinutes()).padStart(2,"0");
     }
-    break;
-  }
 
-  if(!best) {
+    const oTz = best.origin?.timezone||"America/Chicago";
+    const dTz = best.destination?.timezone||"America/Chicago";
+    const depUtc = best.actual_out||best.actual_off||"";
+    const arrUtc = best.actual_in||best.actual_on||"";
+    let blockMins = null;
+    if(depUtc&&arrUtc){
+      const diff=(new Date(arrUtc)-new Date(depUtc))/60000;
+      if(diff>0&&diff<600) blockMins=Math.round(diff);
+    }
+
     return res.status(200).json({
-      tailNumber:"", actualDepTime:"", actualArrTime:"",
-      actualBlockMins:null, notFound:true, triedIdents:identsToTry,
+      tailNumber: best.registration||"",
+      actualDepTime: toLocal(depUtc,oTz),
+      actualArrTime: toLocal(arrUtc,dTz),
+      actualBlockMins: blockMins,
+      cancelled: false,
+      ident: tryIdent,
     });
   }
 
-  const originTz = best.origin?.timezone || "America/Chicago";
-  const destTz   = best.destination?.timezone || "America/Chicago";
-
-  // Gate times preferred over wheels times
-  const depUtc = best.actual_out || best.actual_off || "";
-  const arrUtc = best.actual_in  || best.actual_on  || "";
-
-  let blockMins = null;
-  if(depUtc && arrUtc) {
-    const diff = (new Date(arrUtc).getTime() - new Date(depUtc).getTime()) / 60000;
-    if(diff > 0 && diff < 600) blockMins = Math.round(diff);
-  }
-
-  console.log(`[lookup-flight] ${usedIdent} → tail:${best.registration} dep:${depUtc} arr:${arrUtc}`);
-
   return res.status(200).json({
-    tailNumber:    best.registration || "",
-    actualDepTime: utcToLocal(depUtc, originTz),
-    actualArrTime: utcToLocal(arrUtc, destTz),
-    actualBlockMins: blockMins,
-    cancelled: false,
-    ident: usedIdent,
+    tailNumber:"", actualDepTime:"", actualArrTime:"", actualBlockMins:null,
+    notFound:true, lastError, triedIdents:identsToTry,
   });
-  } catch(e) {
-    console.error("[lookup-flight] Unhandled error:", e);
-    return res.status(500).json({ error: "Server error: " + e.message });
-  }
-}
+};
