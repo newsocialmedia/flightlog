@@ -1,86 +1,54 @@
-// ═══════════════════════════════════════════════════════════════════════════════
-// FlightLog Service Worker
-//
-// Caches the app shell (HTML/JS/CSS) so the app loads instantly and works
-// offline for already-visited screens. Does NOT cache API calls (Supabase,
-// FlightAware, Anthropic) — those always go to the network since they need
-// live data.
-// ═══════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+// FlightLog Service Worker — v9 (network-first, self-healing)
+// ═══════════════════════════════════════════════════════════════════════════
 
-const CACHE_NAME = "flightlog-v3";
-const APP_SHELL = [
-  "/",
-  "/index.html",
-  "/manifest.json",
-];
+const CACHE_NAME = "flightlog-v9";
 
-// Install: pre-cache the app shell
+// Install: activate immediately, don't wait
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL))
-  );
   self.skipWaiting();
 });
 
-// Activate: clean up old caches from previous versions
+// Activate: delete ALL old caches and take control immediately
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys
-          .filter((key) => key !== CACHE_NAME)
-          .map((key) => caches.delete(key))
-      )
-    )
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+      await self.clients.claim();
+    })()
   );
-  self.clients.claim();
 });
 
-// Fetch: network-first for API calls, cache-first for app shell assets
+// Fetch: ALWAYS network-first. Only fall back to cache when offline.
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
-  // Never cache API/data requests — these must always be fresh.
+  // Never touch API/data requests
   const isApiCall =
     url.hostname.includes("supabase.co") ||
     url.hostname.includes("anthropic.com") ||
     url.hostname.includes("flightaware.com") ||
-    url.hostname.includes("aerodatabox") ||
+    url.hostname.includes("aviationweather.gov") ||
     url.pathname.includes("/functions/") ||
     url.pathname.includes("/rest/") ||
     url.pathname.includes("/auth/");
 
   if (isApiCall) {
-    event.respondWith(fetch(event.request));
-    return;
+    return; // let the browser handle it normally
   }
 
-  // For navigation/app-shell requests: try network first, fall back to cache
-  // (so updates show up immediately when online, but app still loads offline).
-  if (event.request.mode === "navigate") {
-    event.respondWith(
-      fetch(event.request)
-        .then((res) => {
-          const resClone = res.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, resClone));
-          return res;
-        })
-        .catch(() => caches.match(event.request).then((res) => res || caches.match("/")))
-    );
-    return;
-  }
-
-  // For other static assets (JS/CSS/fonts/images): cache-first for speed.
+  // Everything else: network-first, cache only as offline fallback
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) return cached;
-      return fetch(event.request).then((res) => {
-        if (res && res.status === 200 && res.type === "basic") {
-          const resClone = res.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, resClone));
+    fetch(event.request)
+      .then((res) => {
+        // Cache a copy for offline use
+        if (res && res.status === 200) {
+          const clone = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         }
         return res;
-      });
-    })
+      })
+      .catch(() => caches.match(event.request))
   );
 });
