@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+
+    <title>FlightLog — Pilot Logbook</title>
+    <meta name="description" content="Automated pilot logbook — upload your roster, AI reads it, tail numbers and block times sync automatically." />
+    <meta name="application-name" content="FlightLog" />
+    <meta name="author" content="FlightLog" />
+
+    <!-- PWA manifest -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#090E1A" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- iOS PWA support -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="FlightLog" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="512x512" href="/icons/icon-512.png" />
+
+    <!-- Android/Chrome -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png" />
+    <link rel="shortcut icon" href="/icons/icon-192.png" />
+
+    <!-- Prevent phone-number detection -->
+    <meta name="format-detection" content="telephone=no" />
+
+    <!-- Microsoft tiles -->
+    <meta name="msapplication-TileColor" content="#090E1A" />
+    <meta name="msapplication-TileImage" content="/icons/icon-512.png" />
+    <meta name="msapplication-config" content="none" />
+
+    <!-- Critical CSS — prevents blank page before React mounts -->
+    <style>
+      *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+      html{font-size:15px;-webkit-text-size-adjust:100%}
+      body{background:#F4F6FB;color:#0B1437;font-family:Inter,system-ui,sans-serif;line-height:1.5;overflow-x:hidden}
+      #root{min-height:100vh;display:flex;flex-direction:column}
+      /* Loading state */
+      .loading-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#F4F6FB}
+      .loading-logo{font-size:32px;font-weight:800;color:#0B1437;letter-spacing:-1px;margin-bottom:12px}
+      .loading-logo span{color:#1D4ED8}
+      .loading-sub{font-size:13px;color:#8A97B4}
+      /* Landing page — always light */
+      .lp-root{background:#f8f9fc;min-height:100vh;color:#0F172A;font-family:Inter,system-ui,sans-serif}
+      .lp-nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;gap:24px;padding:0 40px;height:64px;background:rgba(248,249,252,0.95);backdrop-filter:blur(16px);border-bottom:1px solid #E2E8F0}
+      .lp-logo{font-size:20px;font-weight:800;color:#0F172A;letter-spacing:-.5px}
+      .lp-logo span{color:#2C7BE5}
+      .lp-nav-links{display:flex;gap:28px;margin-left:auto}
+      .lp-nav-link{font-size:13px;color:#64748B;background:none;border:none;cursor:pointer;font-weight:500;padding:0}
+      .lp-nav-actions{display:flex;align-items:center;gap:8px}
+      .lp-nav-login{background:none;border:none;color:#0F172A;font-size:13px;font-weight:600;padding:8px 14px;cursor:pointer}
+      .lp-nav-cta{background:#2C7BE5;color:#fff;border:none;padding:9px 20px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer}
+      .lp-hero{min-height:92vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:120px 24px 64px;position:relative;overflow:hidden;background:#f8f9fc}
+      .lp-hero-bg{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 70% 50% at 50% -10%,rgba(44,123,229,0.09) 0%,transparent 65%)}
+      .lp-badge{display:inline-flex;align-items:center;gap:8px;background:#EFF6FF;border:1px solid #BFDBFE;color:#2C7BE5;font-size:11px;font-weight:700;letter-spacing:1.5px;padding:6px 16px;border-radius:100px;margin-bottom:28px;text-transform:uppercase}
+      .lp-headline{font-size:clamp(38px,6vw,74px);font-weight:900;line-height:1.04;letter-spacing:-2px;color:#0F172A;margin-bottom:20px}
+      .lp-headline em{color:#2C7BE5;font-style:normal}
+      .lp-sub{font-size:clamp(15px,1.4vw,18px);color:#475569;max-width:500px;margin:0 auto 36px;line-height:1.65}
+      .lp-hero-btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:56px}
+      .btn-primary{background:#2C7BE5;color:#fff;border:none;padding:14px 32px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(44,123,229,0.19)}
+      .btn-ghost{background:#fff;color:#0F172A;border:1.5px solid #E2E8F0;padding:13px 28px;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer}
+      .lp-stats{display:flex;justify-content:center;background:#fff;border-top:1px solid #E2E8F0;border-bottom:1px solid #E2E8F0;flex-wrap:wrap}
+      .lp-stat{padding:28px 40px;border-right:1px solid #E2E8F0;text-align:center}
+      .lp-stat:last-child{border-right:none}
+      .lp-stat-num{font-size:34px;font-weight:900;color:#0F172A;letter-spacing:-1px}
+      .lp-stat-lbl{font-size:12px;color:#64748B;margin-top:3px;font-weight:500}
+      .lp-section{padding:80px 40px;max-width:1100px;margin:0 auto}
+      .lp-section-eyebrow{font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#2C7BE5;margin-bottom:10px}
+      .lp-section-title{font-size:clamp(26px,3vw,42px);font-weight:900;color:#0F172A;margin-bottom:14px;line-height:1.08;letter-spacing:-.8px}
+      .lp-section-sub{font-size:16px;color:#475569;max-width:480px;line-height:1.65}
+      .features-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-top:44px}
+      .feature-card{background:#fff;border:1px solid #E2E8F0;border-radius:16px;padding:28px}
+      .feature-title{font-size:15px;font-weight:700;color:#0F172A;margin-bottom:6px}
+      .feature-desc{font-size:13px;color:#64748B;line-height:1.65}
+      .how-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));background:#fff;border-radius:16px;border:1px solid #E2E8F0;margin-top:44px;overflow:hidden}
+      .how-step{padding:32px 24px;border-right:1px solid #E2E8F0}
+      .how-step:last-child{border-right:none}
+      .how-num{font-size:42px;font-weight:900;color:#EFF6FF;line-height:1;margin-bottom:14px}
+      .how-title{font-size:15px;font-weight:700;color:#0F172A;margin-bottom:6px}
+      .how-desc{font-size:13px;color:#64748B;line-height:1.6}
+      .pricing-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:44px;max-width:640px}
+      .price-card{background:#fff;border:1.5px solid #E2E8F0;border-radius:20px;padding:32px;position:relative}
+      .price-card.featured{border-color:#2C7BE5;box-shadow:0 8px 32px rgba(44,123,229,0.09)}
+      .price-badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:#2C7BE5;color:#fff;font-size:10px;font-weight:700;padding:4px 14px;border-radius:100px;letter-spacing:1px;white-space:nowrap}
+      .price-plan{font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#64748B;margin-bottom:6px}
+      .price-amount{font-size:48px;font-weight:900;color:#0F172A;line-height:1;letter-spacing:-2px}
+      .price-period{font-size:14px;color:#94A3B8;margin-left:4px}
+      .price-features{list-style:none;display:flex;flex-direction:column;gap:9px;margin-bottom:28px}
+      .price-features li{font-size:13px;color:#475569;display:flex;align-items:center;gap:9px;font-weight:500}
+      .price-features li::before{content:"✓";color:#2C7BE5;font-weight:800;flex-shrink:0}
+      .price-cta{width:100%;padding:14px;border-radius:10px;font-size:14px;font-weight:700;border:none;cursor:pointer}
+      .price-cta-primary{background:#2C7BE5;color:#fff}
+      .price-cta-ghost{background:transparent;color:#0F172A;border:1.5px solid #E2E8F0}
+      .lp-footer{background:#fff;border-top:1px solid #E2E8F0;padding:32px 40px;display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+      .lp-footer-copy{font-size:12px;color:#94A3B8;margin-left:auto}
+      @media(max-width:768px){
+        .lp-nav{padding:0 14px;height:56px}
+        .lp-nav-links{display:none}
+        .lp-section{padding:48px 16px}
+        .lp-stat{padding:20px 16px}
+        .features-grid,.how-grid,.pricing-grid{grid-template-columns:1fr}
+        .how-step{border-right:none;border-bottom:1px solid #E2E8F0}
+        .lp-footer{padding:24px 16px;flex-direction:column;align-items:flex-start}
+        .lp-footer-copy{margin-left:0}
+      }
+      @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+      @keyframes spin{to{transform:rotate(360deg)}}
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+
+    <!-- Register service worker -->
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("/service-worker.js").catch((err) => {
+            console.warn("Service worker registration failed:", err);
+          });
+        });
+      }
+    </script>
+  </body>
+</html>
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+
+    <!-- Android/Chrome -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png" />
+    <link rel="shortcut icon" href="/icons/icon-192.png" />
+
+    <!-- Prevent phone-number detection -->
+    <meta name="format-detection" content="telephone=no" />
+
+    <!-- Microsoft tiles (helps PWABuilder) -->
+    <meta name="msapplication-TileColor" content="#090E1A" />
+    <meta name="msapplication-TileImage" content="/icons/icon-512.png" />
+    <meta name="msapplication-config" content="none" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+
+    <!-- Register service worker -->
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("/service-worker.js").catch((err) => {
+            console.warn("Service worker registration failed:", err);
+          });
+        });
+      }
+    </script>
+  </body>
+</html>
