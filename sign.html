@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Sign Flight Record — AviateSync</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #F8FAFC; color: #0F172A; min-height: 100dvh;
+  }
+  .wrap { max-width: 480px; margin: 0 auto; padding: 24px 16px 48px; }
+  .logo { text-align: center; font-weight: 900; font-size: 20px; letter-spacing: -0.5px; margin-bottom: 24px; }
+  .logo span { color: #1D4ED8; }
+  .card { background: #fff; border: 1px solid #E2E8F0; border-radius: 18px; padding: 20px; margin-bottom: 16px; }
+  .label { font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .flight-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+  .flight-num { font-size: 20px; font-weight: 800; }
+  .route { font-size: 15px; color: #475569; }
+  .meta { font-size: 12px; color: #94A3B8; margin-top: 4px; }
+  canvas { width: 100%; height: 140px; border: 1.5px dashed #CBD5E1; border-radius: 10px; background: #F8FAFC; touch-action: none; cursor: crosshair; display: block; }
+  .btn-row { display: flex; gap: 8px; margin-top: 10px; }
+  button { font-family: inherit; font-size: 13px; font-weight: 700; border: none; border-radius: 10px; padding: 12px; cursor: pointer; }
+  .btn-clear { flex: 1; background: none; border: 1px solid #E2E8F0; color: #64748B; }
+  .btn-sign { flex: 2; background: #1D4ED8; color: #fff; }
+  .btn-sign:disabled { opacity: 0.5; cursor: not-allowed; }
+  .state-msg { text-align: center; padding: 40px 16px; color: #64748B; font-size: 14px; }
+  .success { text-align: center; padding: 32px 16px; }
+  .error-box { background: #FEF2F2; border: 1px solid #FECACA; color: #DC2626; border-radius: 10px; padding: 12px; font-size: 13px; margin-top: 10px; text-align: center; }
+  .fineprint { font-size: 11px; color: #94A3B8; text-align: center; margin-top: 16px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo">AVIATE<span>SYNC</span></div>
+  <div id="app">
+    <div class="state-msg">Loading...</div>
+  </div>
+</div>
+
+<script>
+const SUPA_URL = "https://uqqjoxpanxtkmjamuhhk.supabase.co";
+const SUPA_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxcWpveHBhbnh0a21qYW11aGhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2NzczNzgsImV4cCI6MjA5NzI1MzM3OH0.TnZBp8cxsYvcU_m4iLVHYQTksFJyG7VWhxoLcVCJLPE";
+
+function getToken() {
+  const pathMatch = window.location.pathname.match(/\/sign\/([a-f0-9]{40,})/i);
+  if (pathMatch) return pathMatch[1];
+  const params = new URLSearchParams(window.location.search);
+  return params.get("token") || "";
+}
+
+const token = getToken();
+const app = document.getElementById("app");
+
+async function callFn(action, extra) {
+  const res = await fetch(`${SUPA_URL}/functions/v1/counter-sign-flight`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "apikey": SUPA_ANON },
+    body: JSON.stringify({ action, token, ...extra }),
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data;
+}
+
+function renderError(msg) {
+  app.innerHTML = `
+    <div class="card">
+      <div class="state-msg" style="padding:24px 8px;">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" style="margin-bottom:12px;"><circle cx="12" cy="12" r="10" stroke="#DC2626" stroke-width="2"/><path d="M12 8v4M12 16h.01" stroke="#DC2626" stroke-width="2" stroke-linecap="round"/></svg>
+        <div style="color:#0F172A;font-weight:700;margin-bottom:4px;">Can't open this link</div>
+        <div style="font-size:13px;">${msg}</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderSuccess(counterName) {
+  app.innerHTML = `
+    <div class="card success">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="#ECFDF5"/><path d="M8 12l3 3 5-5" stroke="#10B981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div style="font-weight:800;font-size:16px;margin-bottom:4px;">Signature recorded</div>
+      <div style="font-size:13px;color:#64748B;">Thank you, ${counterName}. Your signature has been submitted and the pilot has been notified.</div>
+    </div>
+  `;
+}
+
+let lookupData = null;
+
+async function init() {
+  if (!token || token.length < 32) {
+    renderError("This link is missing or malformed. Ask the pilot to resend the request.");
+    return;
+  }
+  try {
+    lookupData = await callFn("lookup");
+  } catch (e) {
+    renderError(e.message);
+    return;
+  }
+
+  if (lookupData.alreadySigned) {
+    renderSuccess(lookupData.counterName);
+    return;
+  }
+
+  const f = lookupData.flight;
+  app.innerHTML = `
+    <div class="card">
+      <div class="label">Signature requested by ${lookupData.pilotName}</div>
+      ${f ? `
+        <div class="flight-row">
+          <div class="flight-num">${f.flightNum || ""}</div>
+          <div class="route">${f.dep || "?"} → ${f.arr || "?"}</div>
+        </div>
+        <div class="meta">${lookupData.periodLabel || ""} · Day ${lookupData.day || ""} ${f.depTime ? `· ${f.depTime}` : ""}${f.acType ? ` · ${f.acType}` : ""}</div>
+      ` : `<div class="meta">Flight details unavailable</div>`}
+    </div>
+    <div class="card">
+      <div class="label">Your signature, ${lookupData.counterName}</div>
+      <canvas id="sigCanvas" width="500" height="200"></canvas>
+      <div class="btn-row">
+        <button class="btn-clear" id="clearBtn">Clear</button>
+        <button class="btn-sign" id="signBtn" disabled>Submit Signature</button>
+      </div>
+      <div id="errBox"></div>
+    </div>
+    <div class="fineprint">
+      By submitting, you confirm this signature is your own and that you are countersigning
+      this flight record at the requesting pilot's request. This link can only be used once.
+    </div>
+  `;
+
+  const canvas = document.getElementById("sigCanvas");
+  const ctx = canvas.getContext("2d");
+  const signBtn = document.getElementById("signBtn");
+  const clearBtn = document.getElementById("clearBtn");
+  const errBox = document.getElementById("errBox");
+  let drawing = false, isEmpty = true;
+
+  function pos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const cx = e.touches ? e.touches[0].clientX : e.clientX;
+    const cy = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: (cx - rect.left) * (canvas.width / rect.width), y: (cy - rect.top) * (canvas.height / rect.height) };
+  }
+  function start(e) { e.preventDefault(); drawing = true; const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); }
+  function move(e) {
+    if (!drawing) return; e.preventDefault();
+    const p = pos(e);
+    ctx.lineTo(p.x, p.y); ctx.strokeStyle = "#0F172A"; ctx.lineWidth = 3; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.stroke();
+    isEmpty = false; signBtn.disabled = false;
+  }
+  function end() { drawing = false; }
+
+  canvas.addEventListener("mousedown", start); canvas.addEventListener("mousemove", move);
+  canvas.addEventListener("mouseup", end); canvas.addEventListener("mouseleave", end);
+  canvas.addEventListener("touchstart", start); canvas.addEventListener("touchmove", move); canvas.addEventListener("touchend", end);
+
+  clearBtn.addEventListener("click", () => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    isEmpty = true; signBtn.disabled = true; errBox.innerHTML = "";
+  });
+
+  signBtn.addEventListener("click", async () => {
+    if (isEmpty) return;
+    signBtn.disabled = true; signBtn.textContent = "Submitting...";
+    errBox.innerHTML = "";
+    try {
+      const dataUrl = canvas.toDataURL("image/png");
+      await callFn("sign", { signaturePng: dataUrl });
+      renderSuccess(lookupData.counterName);
+    } catch (e) {
+      errBox.innerHTML = `<div class="error-box">${e.message}</div>`;
+      signBtn.disabled = false; signBtn.textContent = "Submit Signature";
+    }
+  });
+}
+
+init();
+</script>
+</body>
+</html>
